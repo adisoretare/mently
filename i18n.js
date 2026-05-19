@@ -98,6 +98,23 @@ const ro = {
     close: 'Închide panoul',
   },
 
+  panel: {
+    panelLabel: 'Detalii nod',
+    closeLabel: 'Închide',
+    setSunLabel: 'Setează ca soare',
+    unsetSunLabel: 'Scoate soarele',
+    collapseLabel: 'Comprimă copiii',
+    expandLabel: 'Extinde copiii',
+    markTaskLabel: 'Marchează ca task',
+    unmarkTaskLabel: 'Scoate din taskuri',
+    markDoneLabel: 'Finalizat',
+    markUndoneLabel: 'Redeschide',
+    editLabel: 'Editează',
+    deleteLabel: 'Șterge',
+    deleteConfirmLabel: 'Confirmă ștergerea',
+    descriptionEmpty: 'Fără descriere.',
+  },
+
   a11y: {
     skipToGraph: 'Sari la graf',
     noteAdded: (title) => `Notița "${title}" a fost adăugată.`,
@@ -128,6 +145,40 @@ const ro = {
     // Mesaje pentru sistemul solar — când un nod devine soare temporar prin selecție.
     sunPromoted: (title) => `Centrul vizualizării este acum nodul "${title}".`,
     sunReset: 'Centrul vizualizării a revenit la nodul cel mai conectat.',
+    // Node panel actions
+    panelOpened: (title) => `Panoul nodului "${title}" este deschis.`,
+    panelClosed: 'Panoul nodului este închis.',
+    sunPinned: (title) => `Nodul "${title}" setat ca soare permanent.`,
+    sunUnpinned: (title) => `Nodul "${title}" nu mai este soare permanent.`,
+    collapsed: (title) => `Copiii nodului "${title}" au fost comprimați.`,
+    expanded: (title) => `Copiii nodului "${title}" au fost extinși.`,
+    markedTask: (title) => `Nodul "${title}" marcat ca task.`,
+    unmarkedTask: (title) => `Nodul "${title}" scos din taskuri.`,
+    markedDone: (title) => `Task-ul "${title}" finalizat.`,
+    markedUndone: (title) => `Task-ul "${title}" redeschis.`,
+    focusStarted: (title) => `Focus pornit pe nodul "${title}".`,
+    focusStep: (i, total, title) => `Pasul ${i} din ${total}: ${title}.`,
+    focusExited: 'Focus oprit.',
+    tasksToggled: (expanded) => expanded ? 'Secțiunea Tasks extinsă.' : 'Secțiunea Tasks restrânsă.',
+  },
+
+  tasks: {
+    heading: 'Tasks',
+    count: (done, total) => `${done}/${total}`,
+    showDone: 'Arată finalizate',
+    hideDone: 'Ascunde finalizate',
+    empty: 'Niciun task încă',
+    ariaToggle: (expanded) => expanded ? 'Restrânge tasks' : 'Extinde tasks',
+  },
+
+  focus: {
+    button: 'Focus',
+    stepLabel: (i, total) => `Pasul ${i} / ${total}`,
+    prev: 'Anterior',
+    next: 'Următor',
+    exit: 'Ieși',
+    noPrereq: 'Nod izolat — fără prerechizite.',
+    unavailable: 'Nodul nu mai există.',
   },
 
   meta: {

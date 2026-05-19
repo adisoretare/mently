@@ -254,3 +254,334 @@ body {
               color 150ms ease;
 }
 .mently-btn:active { transform: scale(0.97); }
+
+/* ───────── 17. Node panel — floating detail/action panel ─────────
+   Positioned absolute inside #canvas-wrapper (position: relative|absolute).
+   z-index above canvas grain/vignette layers (those are z-0); panel is z-10.
+*/
+.node-panel {
+  position: absolute;
+  z-index: 10;
+  width: 280px;
+  background-color: rgba(28, 25, 23, 0.96); /* ink-900 96% */
+  border: 1px solid var(--c-ink-700);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(251,146,60,0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+  overflow: hidden;
+}
+.node-panel.hidden { display: none; }
+
+.node-panel-inner { padding: 14px; }
+
+.node-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.node-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-paper-100);
+  line-height: 1.35;
+  margin: 0;
+  flex: 1;
+  word-break: break-word;
+}
+.node-panel-close {
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--c-paper-500);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 120ms ease;
+  line-height: 0;
+}
+.node-panel-close:hover { color: var(--c-paper-100); }
+
+.node-panel-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.node-panel-tag {
+  font-size: 10px;
+  color: var(--c-signal-400);
+  background: rgba(251,146,60,0.08);
+  border: 1px solid rgba(251,146,60,0.2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  letter-spacing: 0.02em;
+}
+
+.node-panel-content {
+  max-height: 120px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-ink-700) transparent;
+}
+.node-panel-desc {
+  font-size: 12px;
+  color: var(--c-paper-300);
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.node-panel-desc-empty {
+  font-size: 11px;
+  color: var(--c-paper-500);
+  font-style: italic;
+  margin: 0;
+}
+
+.node-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--c-ink-800);
+  padding-top: 8px;
+}
+.node-panel-divider { height: 1px; background: var(--c-ink-800); margin: 2px 0; }
+
+.node-panel-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 7px;
+  font-size: 11.5px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  transition: background-color 100ms ease, color 100ms ease;
+  line-height: 1;
+}
+.node-panel-btn--ghost {
+  color: var(--c-paper-500);
+}
+.node-panel-btn--ghost:hover {
+  background: rgba(250,250,249,0.05);
+  color: var(--c-paper-100);
+}
+.node-panel-btn--active {
+  color: var(--c-signal-400);
+}
+.node-panel-btn--done {
+  color: var(--c-jade-400);
+}
+.node-panel-btn--danger {
+  color: rgba(248,113,113,0.7);
+}
+.node-panel-btn--danger:hover {
+  background: rgba(239,68,68,0.08);
+  color: var(--c-crimson-400);
+}
+.node-panel-btn--armed {
+  background: rgba(239,68,68,0.12);
+  color: var(--c-crimson-400);
+}
+
+/* ───────── 18. Sidebar card — task/done state ───────── */
+article.done .mently-card-title {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.note-task-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: var(--c-signal-400);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.note-task-badge--done {
+  color: var(--c-jade-400);
+}
+
+/* ───────── 19. Tasks section — collapsible sidebar region ─────────
+   Sits between #stats-section and #form-section in the sidebar scroll area.
+   Header row: chevron toggle + heading + count + show-done toggle button.
+*/
+#tasks-section {
+  /* no extra margin — parent space-y-6 handles spacing */
+}
+.tasks-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  cursor: default;
+}
+.tasks-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  color: var(--c-paper-500);
+  text-align: left;
+}
+.tasks-toggle-btn:hover { color: var(--c-paper-300); }
+.tasks-chevron {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--c-paper-500);
+  transition: transform 200ms var(--ease-out-soft);
+  line-height: 1;
+  user-select: none;
+}
+.tasks-toggle-btn[aria-expanded="false"] .tasks-chevron {
+  transform: rotate(-90deg);
+}
+.tasks-heading-text {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: inherit;
+}
+.tasks-count-badge {
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  color: var(--c-paper-500);
+  opacity: 0.7;
+  margin-left: 2px;
+}
+.tasks-show-done-btn {
+  font-size: 9px;
+  background: none;
+  border: 1px solid var(--c-ink-700);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--c-paper-500);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease;
+  flex-shrink: 0;
+}
+.tasks-show-done-btn:hover {
+  color: var(--c-paper-300);
+  border-color: var(--c-ink-600, var(--c-ink-700));
+}
+.tasks-list {
+  overflow: hidden;
+  max-height: 2000px; /* large enough to not clip content */
+  transition: max-height 280ms var(--ease-out-soft);
+}
+.tasks-list[aria-hidden="true"] {
+  max-height: 0;
+}
+.tasks-empty {
+  font-size: 11px;
+  color: var(--c-paper-500);
+  font-style: italic;
+  padding: 8px 0 4px;
+  opacity: 0.7;
+}
+
+/* ───────── 20. Focus bar — bottom step navigator overlaying canvas ─────────
+   Absolutely positioned at bottom-center of #canvas-wrapper.
+   z-index 20 so it sits above .node-panel (z-10) and canvas layers (z-0).
+*/
+#focus-bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: none; /* shown via JS: focusBar.style.display = 'flex' */
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(28, 25, 23, 0.94);
+  border: 1px solid var(--c-ink-700);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(251,146,60,0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  max-width: 520px;
+  width: max-content;
+  pointer-events: auto;
+}
+.focus-bar-nav {
+  background: none;
+  border: 1px solid var(--c-ink-700);
+  border-radius: var(--radius-sm);
+  color: var(--c-paper-500);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 100ms ease, border-color 100ms ease, background-color 100ms ease;
+  flex-shrink: 0;
+}
+.focus-bar-nav:hover:not(:disabled) {
+  color: var(--c-paper-100);
+  border-color: var(--c-ink-600, var(--c-ink-700));
+}
+.focus-bar-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.focus-bar-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 160px;
+  max-width: 280px;
+}
+.focus-bar-step {
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  color: var(--c-signal-400);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.focus-bar-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-paper-100);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.focus-bar-hint {
+  font-size: 9px;
+  color: var(--c-paper-500);
+  font-style: italic;
+}
+.focus-bar-exit {
+  background: none;
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius-sm);
+  color: rgba(248,113,113,0.7);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  transition: color 100ms ease, border-color 100ms ease, background-color 100ms ease;
+  flex-shrink: 0;
+}
+.focus-bar-exit:hover {
+  color: var(--c-crimson-400);
+  border-color: rgba(239,68,68,0.6);
+  background: rgba(239,68,68,0.08);
+}
