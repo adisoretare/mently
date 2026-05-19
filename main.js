@@ -22,10 +22,18 @@ import * as UI from './ui.js';
 import * as Security from './security.js';
 import * as Focus from './focus.js';
 import * as Fullscreen from './ui-fullscreen.js';
-import { t } from './i18n.js';
+import * as Hash from './url-hash.js';
+import * as Shortcuts from './ui-shortcuts.js';
+import { t, initLanguage } from './i18n.js';
 
 function boot() {
   try {
+    initLanguage(); // must be first — sets currentLang before any t.* access
+    // Apply persisted theme early to avoid dark→light flash
+    const savedTheme = localStorage.getItem('mently:theme');
+    if (savedTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
     Store.init();
 
     // Injectăm mesajele localizate în store ÎNAINTE de UI.init() — altfel primele
@@ -38,6 +46,8 @@ function boot() {
     Focus.init(document.getElementById('canvas-wrapper'));
 
     Fullscreen.init();
+    Shortcuts.init();
+    Hash.init(); // after UI.init() so Canvas is ready
 
     // Callback-ul de storage errors e wired după UI.init() pentru că UI.announce
     // are nevoie de elementul aria-live montat de UI.

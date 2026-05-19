@@ -7,6 +7,9 @@ export function init() {
   btn = document.getElementById('fullscreen-toggle');
   if (!btn) return;
 
+  // Sync label from i18n (overrides static HTML default which is always RO)
+  btn.setAttribute('aria-label', t.fullscreen.enter);
+
   btn.addEventListener('click', toggle);
   document.addEventListener('fullscreenchange', sync);
 }

@@ -8,6 +8,7 @@ import {
   sanitizeTag,
   LIMITS,
 } from './security.js';
+import * as Voice from './ui-voice.js';
 
 let formEl = null;
 let titleInput = null;
@@ -39,6 +40,7 @@ export function mount(container) {
   titleErrorEl = container.querySelector('#title-error');
 
   attachListeners();
+  Voice.init(titleInput);
 
   // Dacă nota editată dispare (clear all, delete extern), ieșim silent.
   subscribe(() => {

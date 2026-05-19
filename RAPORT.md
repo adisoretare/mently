@@ -200,7 +200,7 @@ for (let i = 0; i < 35; i++) window.__mently.Store.addNote({ title: `test${i}`, 
 
 **Pentru utilizare:**
 - Browser modern cu suport ES6 modules — Chrome 90+, Firefox 90+, Safari 15+, Edge 90+
-- Conexiune la internet pentru prima accesare (Tailwind CDN + Google Fonts); după aceea funcționează din cache browser
+- Conexiune la internet pentru prima accesare (Google Fonts); Tailwind CSS este compilat static local — zero request extern JS
 - **NU necesită** Node.js, NPM, build step sau cont de utilizator
 
 **Rulare locală (alternativă la URL public):**

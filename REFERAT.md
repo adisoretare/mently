@@ -261,19 +261,32 @@ Mently rezolvă o problemă concretă: notițele liniare (liste, foldere) nu exp
 - **Sistem solar vizual** cu 8 palete per componentă conexă și 4 tipuri de noduri-planetă cu texturi Canvas distincte (coroană pulsantă, atmosferă, benzi gazoase, crescent) — implementare proprie, nu bibliotecă vizualizare
 - **Focus mode BFS**: traversare interactivă a grafului pas cu pas, cu spotlight care pan-ează canvas-ul lerp spre nodul curent
 - **Inele orbitale** cu lerp smooth per componentă (eliminare jitter fizică)
-- **Zero dependențe de runtime**: Tailwind și Google Fonts via CDN sunt singurele externe; toată logica — algoritmi, render, securitate — este cod propriu
+- **Internaționalizare completă** (RO/EN) cu proxy dinamic și persistență localStorage
+- **Voice input** prin Web Speech API: dictare titlu, recunoaștere adaptată după limba activă (ro-RO / en-US)
+- **URL hash deep linking**: starea de selecție (nod/tag) se reflectă în URL — link-urile sunt share-abile și restaurabile
+- **Zero dependențe de runtime**: `tailwind.css` compilat static local — niciun request extern la JavaScript terț
 - **Paletă warm-stone**: distanțare deliberată față de genericul dark-blue/gray; amber accent cu griuri calde
 
 ### 4.3 Diferențierea față de abordări existente
 
-| Caracteristică | Mently | Obsidian/Roam |
-|---|---|---|
-| Sursa conexiunilor | Tag-uri (automat) | Link-uri explicite |
-| Inconsistențe posibile | Imposibil structural | Posibil (link-uri orfane) |
-| Stack | Vanilla JS, zero deps | Electron / framework |
-| Vizualizare | Canvas 2D custom (FR) | D3.js / bibliotecă |
-| Offline | Yes (localStorage) | Yes |
-| Build step | Niciun | Există |
+| Caracteristică | Mently | Obsidian | Roam Research | Logseq |
+|---|---|---|---|---|
+| Sursa conexiunilor | Tag-uri *(automat)* | Link-uri `[[explicit]]` | Referințe directe | Link-uri + backlink-uri |
+| Inconsistențe posibile | Imposibil structural | Posibil (link-uri orfane) | Posibil | Posibil |
+| Arhitectură | Browser-only, client-side | Electron (local app) | Cloud SaaS | Electron + Cloud sync |
+| Open-source | Da (cod public) | Parțial (plugin API) | Nu | Da |
+| Framework JS | Vanilla (zero deps) | React + Electron | React | Clojure/ClojureScript |
+| Vizualizare graf | Canvas 2D custom (FR) | D3.js graph plugin | Nu (implicit) | D3.js |
+| Cont necesar | Nu | Nu | Da | Nu |
+| Build step | Nu *(CSS pre-compilat)* | Da | N/A SaaS | Da |
+| Voice input | Da *(Web Speech API)* | Nu | Nu | Nu |
+| URL deep linking | Da *(hash-based)* | Nu | Da (URL-based) | Nu |
+| Internaționalizare | Da *(RO/EN)* | Via plugin | Nu | Parțial |
+
+**Cei 3 diferențiatori unici ai Mently:**
+1. **Graf emergent din tag-uri** — nu necesită link-uri manuale; imposibilitate structurală de inconsistență
+2. **Sistem solar vizual** — fiecare componentă conexă = „sistem planetar" cu soare, orbite, planete tipologice
+3. **Zero install, zero framework, zero cont** — rulează direct din browser, cod 100% Vanilla JS
 
 ---
 

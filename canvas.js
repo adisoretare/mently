@@ -212,6 +212,10 @@ function currentPulseScale() {
   return motionOK ? (1 + 0.04 * Math.sin(performance.now() * 0.0018)) : 1;
 }
 
+export function reloadPalette() {
+  loadPalette();
+}
+
 export function init(canvas) {
   if (!canvas) {
     console.error('[canvas] Element canvas lipsă');

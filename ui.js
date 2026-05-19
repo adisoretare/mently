@@ -15,11 +15,13 @@ import { subscribe, getNotes, getNoteById, updateNote } from './store.js';
 import { buildGraphModel } from './graph.js';
 import { setAriaLive, announce } from './dom.js';
 import { escapeHtml } from './security.js';
-import { t } from './i18n.js';
+import { t, setLanguage, getCurrentLanguage } from './i18n.js';
 import * as Form from './ui-form.js';
 import * as List from './ui-list.js';
 import * as Drawer from './ui-drawer.js';
 import * as Canvas from './canvas.js';
+import * as Hash from './url-hash.js';
+
 import * as NodePanel from './ui-node-panel.js';
 import * as Tasks from './ui-tasks.js';
 import * as Focus from './focus.js';
@@ -109,6 +111,7 @@ export function init() {
     Canvas.setSelected(id);
     Tasks.setSelectedId(id);
     id ? NodePanel.show(id) : NodePanel.hide();
+    Hash.setNodeHash(id);
     if (id) {
       const note = getNoteById(id);
       if (note) announce(t.a11y.nodeSelected(note.title));
@@ -122,11 +125,13 @@ export function init() {
     if (!Focus.isActive()) {
       id ? NodePanel.show(id) : NodePanel.hide();
     }
+    Hash.setNodeHash(id);
   });
 
   // ─── Tag click sidebar → highlight componentă ───
   List.onTagClick((tag) => {
     Canvas.highlightByTag(tag);
+    Hash.setTagHash(tag);
   });
 
   // ─── EDIT flow: list → form (cu selecție auto pe canvas) ───
@@ -138,6 +143,7 @@ export function init() {
   });
 
   initSidebarToggle();
+  initLangThemeToolbar();
 
   subscribe(handleStateChange);
   handleStateChange();
@@ -151,9 +157,11 @@ function initSidebarToggle() {
   const btn = document.getElementById('sidebar-toggle');
   if (!btn) return;
 
-  // Restore persisted state
+  // Sync label from i18n and restore persisted state
   if (localStorage.getItem(SIDEBAR_KEY) === '1') {
     setCollapsed(btn, true, false);
+  } else {
+    btn.setAttribute('aria-label', t.sidebar.collapse);
   }
 
   btn.addEventListener('click', () => {
@@ -181,6 +189,40 @@ function setCollapsed(btn, collapse, shouldAnnounce) {
 
 export { announce };
 
+/* ─────────────────────────── Lang + Theme toolbar ─────────────────────────── */
+
+const THEME_KEY = 'mently:theme';
+
+function initLangThemeToolbar() {
+  const langBtn  = document.getElementById('lang-toggle');
+  const themeBtn = document.getElementById('theme-toggle');
+
+  if (langBtn) {
+    langBtn.addEventListener('click', () => {
+      const next = getCurrentLanguage() === 'ro' ? 'en' : 'ro';
+      setLanguage(next);
+    });
+  }
+
+  if (themeBtn) {
+    // Apply persisted theme on load
+    const saved = localStorage.getItem(THEME_KEY) || 'dark';
+    applyTheme(saved, false);
+
+    themeBtn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark', true);
+    });
+  }
+}
+
+function applyTheme(theme, persist) {
+  document.documentElement.setAttribute('data-theme', theme);
+  if (persist) localStorage.setItem(THEME_KEY, theme);
+  // Re-read CSS vars so canvas colors reflect the new theme
+  requestAnimationFrame(() => Canvas.reloadPalette());
+}
+
 /* ─────────────────────────── Sidebar shell ─────────────────────────── */
 
 function renderSidebarShell() {
@@ -198,16 +240,34 @@ function renderSidebarShell() {
             ${escapeHtml(t.tagline)}
           </p>
         </div>
-        <button
-          id="drawer-close"
-          type="button"
-          class="md:hidden p-1.5 -mt-1 -mr-1 text-paper-500 hover:text-paper-100 rounded transition-colors"
-          aria-label="${escapeHtml(t.drawer.close)}"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <div class="flex flex-col items-end gap-2">
+          <button
+            id="drawer-close"
+            type="button"
+            class="md:hidden p-1.5 -mt-1 -mr-1 text-paper-500 hover:text-paper-100 rounded transition-colors"
+            aria-label="${escapeHtml(t.drawer.close)}"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <div class="mently-toolbar" aria-label="Display settings">
+            <button id="lang-toggle" class="mently-toolbar-btn" aria-label="${escapeHtml(t.lang.switchLabel)}">${escapeHtml(t.lang.switchTo)}</button>
+            <button id="theme-toggle" class="mently-toolbar-btn" aria-label="${escapeHtml(t.theme.toggleLabel)}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="${escapeHtml(t.a11y.statsRegion)}"></div>

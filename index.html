@@ -13,14 +13,15 @@
     Chiar dacă apare un XSS, atacatorul nu poate încărca scripturi de pe alte domenii.
 
     TRADE-OFFS EXPLICITE:
-      • 'unsafe-inline' (script): NECESAR pentru window.tailwind.config inline.
-      • 'unsafe-eval' (script): NECESAR pentru JIT-ul runtime al Tailwind CDN
-         (generează clasele utility la runtime via Function()).
-      • Ambele ar fi eliminate într-un build de producție cu Tailwind pre-compilat.
+      • 'unsafe-inline' (script): păstrat pentru event handlers inline din template strings
+         generate dinamic de componente (ui-form.js, ui-list.js etc.). Eliminarea lui ar
+         necesita refactorizarea tuturor template-urilor cu addEventListener separat.
+      • 'unsafe-eval' ELIMINAT: Tailwind CDN (care folosea JIT via Function()) a fost
+         înlocuit cu tailwind.css compilat static — CSP mai strict, zero request extern.
   -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com;
+    script-src 'self' 'unsafe-inline';
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' data: https://fonts.gstatic.com;
     img-src 'self' data:;
@@ -40,28 +41,7 @@
   <!-- Favicon inline (SVG data-URI) — zero requests HTTP, on-brand -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0a09'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='22' fill='%23fb923c'%3EM%3C/text%3E%3C/svg%3E" />
 
-  <!-- Tailwind config (must be before tailwind script) -->
-  <script>
-    window.tailwind = window.tailwind || {};
-    window.tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            display: ['"Instrument Serif"', 'ui-serif', 'Georgia', 'serif'],
-            sans:    ['"Geist"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-            mono:    ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-          },
-          colors: {
-            ink:    { 950: '#0c0a09', 900: '#1c1917', 800: '#292524', 700: '#44403c' },
-            paper:  { 100: '#fafaf9', 300: '#d6d3d1', 500: '#a8a29e' },
-            signal: { 400: '#fb923c', 300: '#fdba74', 500: '#f97316' },
-          },
-        },
-      },
-    };
-  </script>
-  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <link rel="stylesheet" href="./tailwind.css" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
