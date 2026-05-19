@@ -1,50 +1,4 @@
-/**
- * canvas.js — Renderer Canvas + Interaction layer
- * =============================================================================
- * DECIZII ARHITECTURALE (Cap. I, III, IV):
- *
- * 1. SEPARARE LOGICĂ ↔ DESEN
- *    physics.js calculează FĂRĂ să atingă DOM/Canvas.
- *    canvas.js DOAR citește pozițiile și desenează — apoi captează input.
- *    Beneficiu: poți rula simularea într-un Web Worker (rezistent la scale-up).
- *
- * 2. RENDER LOOP cu requestAnimationFrame
- *    rAF se sincronizează cu refresh-ul ecranului → 60fps fără tearing.
- *    Bonus: când tabul e ascuns, browserul oprește automat rAF → 0 CPU usage.
- *
- * 3. HIGH-DPI AWARE
- *    Pixel buffer = CSS size × devicePixelRatio.
- *    ctx.setTransform(dpr, 0, 0, dpr, 0, 0) → desenăm în pixeli logici.
- *    Rezultat: linii crisp pe Retina/4K fără să dublăm complexitatea codului.
- *
- * 4. RETAINED-MODE prin physics.js + IMMEDIATE-MODE prin canvas.js
- *    Pozițiile trăiesc în physics.js (retained), iar canvas.js le desenează
- *    de la zero la fiecare frame (immediate). Hibrid optim pentru graf dinamic.
- *
- * 5. PICKING prin distanță geometrică
- *    Click → caut nodul cu d² < r²·padding. O(n) per click, perfect pentru
- *    n < 10⁴. Nu am nevoie de quadtree pentru această scală.
- *
- * 6. EVENT BUS MINIMAL
- *    `selectListeners` permite ui-list.js să fie notificat când utilizatorul
- *    selectează un nod pe canvas, fără cuplare directă. Mediator pattern.
- *
- * 7. POINTER EVENTS unificate
- *    Mouse + touch printr-un singur handler (Pointer Events API).
- *    Standard W3C, suport universal modern → cod 2x mai scurt decât duplicat.
- *
- * 8. SISTEM SOLAR (Step 7):
- *    Fiecare componentă conexă are un "soare" (nodul cu cel mai mare grad).
- *    Celelalte noduri primesc un "tier" vizual bazat pe adâncimea BFS:
- *      Tier 0 (soare)     — mare, signal-400, coroană pulsantă
- *      Tier 1 (interior)  — normal, signal-300, atmosferă fină
- *      Tier 2 (gazos)     — mediu, ink-900, contur paper-300 + inel dashed
- *      Tier 3 (extern)    — mic, gol, contur paper-500 estompat
- *    Click pe un nod îl promovează temporar ca soare → perspectivă subiectivă.
- *    Inele orbitale transparente marchează "orbitele" în fundal (top 5 componente).
- *    Pulsarea soarelui este dezactivată sub prefers-reduced-motion.
- * =============================================================================
- */
+// Renderer Canvas 2D + Pointer Events. Physics în physics.js; UI wiring în ui.js.
 
 import { subscribe, getNotes } from './store.js';
 import { buildGraphModel, connectedComponent, nodesWithTag } from './graph.js';
@@ -59,8 +13,6 @@ import {
   reheat,
   resize,
 } from './physics.js';
-
-/* ─────────────────────────── State ─────────────────────────── */
 
 let canvasEl = null;
 let ctx = null;
@@ -108,8 +60,6 @@ const VIEWPORT_LERP = 0.12;
 
 // Spotlight (focus mode — dims all non-spotlight nodes)
 let spotlightId = null;
-
-/* ─────────────────────────── Paletă (din CSS custom properties) ─────────────────────────── */
 
 // Valorile de mai jos sunt fallback-uri — loadPalette() le suprascrie la init()
 // citind CSS vars din style.css (singura sursă de adevăr pentru culori).
@@ -188,8 +138,6 @@ function loadPalette() {
   PALETTE.gold500   = get('--c-gold-500',    PALETTE.gold500);
 }
 
-/* ─────────────────────────── Constante dimensionale ─────────────────────────── */
-
 const NODE_BASE_RADIUS    = 6;    // raza de bază pentru orice nod
 const NODE_DEGREE_RADIUS  = 1.6;  // bonus de rază per grad (conexiune)
 const NODE_MAX_DEGREE_BONUS = 6;  // capul bonusului de grad
@@ -226,8 +174,6 @@ const COMPONENT_PALETTES = [
   { sun: 'aurora400',  inner: 'jade300',    midStroke: 'aurora500',  bandA: 'jade400',    bandB: 'aurora300',  outerFill: 'ink800', outerStroke: 'jade300'    },
 ];
 
-/* ─────────────────────────── Radius helper ─────────────────────────── */
-
 /**
  * Calculează raza unui nod pe baza numărului de copii BFS și a tier-ului.
  *
@@ -250,10 +196,6 @@ function nodeRadius(childCount, depth) {
   return Math.max(3, NODE_BASE_RADIUS * 0.75);            // extern: mai mic, minim 3px
 }
 
-/**
- * Converteste un hex color (#rrggbb) în rgba(r,g,b,alpha).
- * Folosit pentru a genera culorile halouilor/coronelor din paleta per-componentă.
- */
 function hexToRgba(hex, alpha) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -269,8 +211,6 @@ function hexToRgba(hex, alpha) {
 function currentPulseScale() {
   return motionOK ? (1 + 0.04 * Math.sin(performance.now() * 0.0018)) : 1;
 }
-
-/* ─────────────────────────── Init ─────────────────────────── */
 
 export function init(canvas) {
   if (!canvas) {
@@ -322,8 +262,6 @@ export function init(canvas) {
   requestAnimationFrame(loop);
 }
 
-/* ─────────────────────────── Sync din store ─────────────────────────── */
-
 function refreshFromStore() {
   const notes = getNotes();
   // Pasăm selectedId ca override de soare — astfel nodul selectat devine centrul
@@ -349,8 +287,6 @@ function refreshFromStore() {
   }
 }
 
-/* ─────────────────────────── Render loop ─────────────────────────── */
-
 function loop() {
   // Sari tick + render când tab-ul e ascuns (browser throttlează rAF, dar economisim și mai mult)
   if (!document.hidden) {
@@ -369,8 +305,6 @@ function loop() {
   }
   requestAnimationFrame(loop);
 }
-
-/* ─────────────────────────── Render principal ─────────────────────────── */
 
 function render() {
   const w = getLogicalWidth();
@@ -470,8 +404,6 @@ function render() {
   ctx.restore();
 }
 
-/* ─────────────────────────── Inele orbitale (fundal) ─────────────────────────── */
-
 /**
  * Desenează inele orbitale transparente în jurul fiecărui soare.
  *
@@ -560,8 +492,6 @@ function renderOrbitalRings() {
   ctx.globalAlpha = 1;
   ctx.restore();
 }
-
-/* ─────────────────────────── Tier rendering ─────────────────────────── */
 
 /**
  * Dispatcher central: alege funcția de render corespunzătoare tier-ului
@@ -987,8 +917,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
-/* ─────────────────────────── Geometry / Picking ─────────────────────────── */
-
 function getLogicalWidth()  { return canvasEl.width  / dpr; }
 function getLogicalHeight() { return canvasEl.height / dpr; }
 
@@ -1038,8 +966,6 @@ function findNodeAt(x, y) {
   }
   return best;
 }
-
-/* ─────────────────────────── Pointer events ─────────────────────────── */
 
 function handlePointerDown(e) {
   if (e.button !== undefined && e.button !== 0) return; // doar left click
@@ -1115,8 +1041,6 @@ function handlePointerUp(e) {
   pointerDown = null;
 }
 
-/* ─────────────────────────── Keyboard ─────────────────────────── */
-
 function handleKeydown(e) {
   if (spotlightId !== null) return;
   if (e.key === 'Escape') {
@@ -1130,8 +1054,6 @@ function handleKeydown(e) {
     }
   }
 }
-
-/* ─────────────────────────── Public selection API ─────────────────────────── */
 
 /** Setează selecția din afară (sync cu sidebar). Fără reheat — soarele e render-only. */
 export function setSelected(id) {
@@ -1207,8 +1129,6 @@ function notifySelect() {
     try { fn(selectedId); } catch (err) { console.error('[canvas] selectListener:', err); }
   }
 }
-
-/* ─────────────────────────── Tag highlight ─────────────────────────── */
 
 /**
  * Evidențiază componenta conexă care conține orice nod cu acest tag.

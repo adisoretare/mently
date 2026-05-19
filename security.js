@@ -1,38 +1,4 @@
-/**
- * security.js — Strat defensiv centralizat
- * =============================================================================
- * DECIZII ARHITECTURALE (Cap. V — Securitate):
- *
- * Toată logica de sanitizare, validare și rate limiting trăiește aici.
- * Restul modulelor o IMPORTĂ — nu există escapeHtml duplicat în 3 locuri.
- * Beneficiu: schimbi politica de securitate într-un singur fișier.
- *
- * MODEL DEFENSIV (defense in depth):
- *   1. INPUT BOUNDARY: orice intrare externă (form, JSON import, localStorage)
- *      trece prin funcțiile sanitize/validate înainte de a atinge state-ul.
- *   2. STORAGE: store.js folosește security.js → datele sunt curate ÎN store.
- *   3. RENDER: UI escape-uie din nou la afișare, chiar dacă datele sunt deja
- *      sanitizate → "belt and suspenders" pattern → o singură verigă slabă
- *      nu compromite întregul lanț.
- *
- * ATACURI ACOPERITE:
- *   - XSS prin innerHTML (escape strict pe & < > " ' / `)
- *   - Control character injection (\x00-\x1F → strip, previne RTL override etc.)
- *   - localStorage tampering (validare per-câmp la load)
- *   - Prototype pollution (refuz obiectelor cu __proto__ custom la import)
- *   - DoS prin input gigant (length limits centralizate)
- *   - DoS prin spam (rate limiter token-bucket)
- *   - JSON depth / size attacks (limit 5MB, validare strictă schemă)
- *
- * INTENȚIONAT NU IMPLEMENTĂM:
- *   - CSRF: aplicația e 100% client-side, fără cookies/sesiune
- *   - SQL Injection: nu există SQL nicăieri
- *   - DOMPurify (full HTML sanitization): nu inserăm HTML user-generated,
- *     doar textContent-uri escape-uite → overkill pentru threat model.
- * =============================================================================
- */
-
-/* ─────────────────────────── LIMITS (sursă unică de adevăr) ─────────────────────────── */
+// Sanitizare XSS, validare import JSON, rate limiting. Singura sursă de validare în aplicație.
 
 export const LIMITS = Object.freeze({
   TITLE_MAX_LENGTH: 200,
@@ -55,8 +21,6 @@ export const LIMITS = Object.freeze({
  */
 export const TAG_REGEX = /^[a-z0-9\u00e0-\u017f][a-z0-9\u00e0-\u017f_-]{0,31}$/;
 
-/* ─────────────────────────── Erori ─────────────────────────── */
-
 /** Eroare custom pentru cazuri de securitate — separabilă în catch. */
 export class SecurityError extends Error {
   constructor(message, code = null) {
@@ -65,8 +29,6 @@ export class SecurityError extends Error {
     if (code) this.code = code;
   }
 }
-
-/* ─────────────────────────── HTML escape (XSS protection) ─────────────────────────── */
 
 /**
  * Mapă entități HTML. Include `/` și `` ` `` (sub utilizate dar relevante):
@@ -100,8 +62,6 @@ export function escapeHtml(str) {
   if (str == null) return '';
   return String(str).replace(HTML_ESCAPE_RE, (c) => HTML_ENTITIES[c]);
 }
-
-/* ─────────────────────────── Text sanitization ─────────────────────────── */
 
 /**
  * Control characters care NU sunt acceptate în text utilizator:
@@ -142,8 +102,6 @@ export function sanitizeContent(value) {
   return sanitizeText(value, LIMITS.CONTENT_MAX_LENGTH);
 }
 
-/* ─────────────────────────── Tag sanitization ─────────────────────────── */
-
 /** Validează un tag deja normalizat (lowercase, trimmed). */
 export function isValidTag(value) {
   return typeof value === 'string' && TAG_REGEX.test(value);
@@ -183,8 +141,6 @@ export function sanitizeTags(value) {
   }
   return out;
 }
-
-/* ─────────────────────────── Note validation ─────────────────────────── */
 
 /** Verifică dacă un timestamp e într-o fereastră rezonabilă (1980-2100). */
 function isValidEpoch(n) {
@@ -253,8 +209,6 @@ export function validateNote(raw) {
   };
 }
 
-/* ─────────────────────────── Import validation ─────────────────────────── */
-
 /**
  * Parse și validare strictă a unui payload de import (Pasul 5).
  * Aruncă SecurityError la prima problemă detectată — fail fast.
@@ -318,8 +272,6 @@ export function parseAndValidateImport(rawString) {
   };
 }
 
-/* ─────────────────────────── Rate limiter (token bucket) ─────────────────────────── */
-
 /**
  * Creează un rate limiter sliding-window.
  *
@@ -354,8 +306,6 @@ export function createRateLimiter(maxCalls, windowMs) {
     },
   };
 }
-
-/* ─────────────────────────── Utilities ─────────────────────────── */
 
 /** ID generator (preferă crypto.randomUUID, fallback la pseudo-random). */
 export function generateId() {

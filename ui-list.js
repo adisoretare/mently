@@ -1,20 +1,4 @@
-/**
- * ui-list.js — Lista de carduri + edit + delete + clear-all
- * =============================================================================
- * DECIZII ARHITECTURALE (Pasul "Edit Graph"):
- *
- * 1. EDIT BUTTON pe fiecare card → ui-list.js NU edit-uiește direct;
- *    emite un eveniment `onEdit(id)` pe care ui.js îl rutează către ui-form.js.
- *    Beneficiu: list rămâne presentational, form rămâne stateful — separare clară.
- *
- * 2. CLEAR ALL cu CONFIRMARE 2-CLICK
- *    Click 1: butonul intră în "armed" state (text roșu pulsant, copy schimbat).
- *    Click 2 în <3s: confirmă și șterge.
- *    Click în altă parte sau timeout: revine la default.
- *    DE CE NU confirm() nativ: rupe estetica dark mode (dialog alb Chrome).
- *    DE CE NU modal full: too much code, nu adaugă valoare la 2-click pattern.
- * =============================================================================
- */
+// Lista de carduri + edit/delete + export/import. Comunică prin callbacks (onSelect/onEdit/onTagClick).
 
 import { t } from './i18n.js';
 import { getNotes, deleteNote, clearAll, getNoteById, exportJSON, replaceNotes } from './store.js';
@@ -35,8 +19,6 @@ let armedDeleteTimer = null;
 const selectListeners = new Set();
 const tagClickListeners = new Set();
 const editListeners = new Set();
-
-/* ─────────────────────────── Public API ─────────────────────────── */
 
 export function mount(container) {
   containerEl = container;
@@ -107,8 +89,6 @@ export function setActiveTag(tag) {
   activeTag = tag;
   render(getNotes());
 }
-
-/* ─────────────────────────── Templates ─────────────────────────── */
 
 function renderEmpty() {
   return `
@@ -289,8 +269,6 @@ function renderClearAll() {
   `;
 }
 
-/* ─────────────────────────── Events ─────────────────────────── */
-
 function handleClick(e) {
   // Clear filter
   if (e.target.closest('[data-action="clear-filter"]')) {
@@ -387,8 +365,6 @@ function handleKeydown(e) {
   toggleSelect(card.dataset.noteId);
 }
 
-/* ─────────────────────────── Export / Import ─────────────────────────── */
-
 function handleExport() {
   const json = exportJSON();
   const blob = new Blob([json], { type: 'application/json' });
@@ -446,8 +422,6 @@ function clearImportError() {
   if (importErrorTimer) { clearTimeout(importErrorTimer); importErrorTimer = null; }
 }
 
-/* ─────────────────────────── Delete — armed/confirm pattern ─────────────────────────── */
-
 function armDelete(id, title) {
   armedDeleteId = id;
   announce(t.a11y.deleteArmed(title));
@@ -469,8 +443,6 @@ function disarmDelete() {
   }
 }
 
-/* ─────────────────────────── Clear All — armed/confirm pattern ─────────────────────────── */
-
 function armClearAll() {
   clearAllArmed = true;
   announce(t.a11y.clearAllArmed);
@@ -491,8 +463,6 @@ function disarmClearAll() {
     clearAllTimer = null;
   }
 }
-
-/* ─────────────────────────── Selection helpers ─────────────────────────── */
 
 function toggleSelect(id) {
   // Click pe un alt card dezarmează confirmarea de ștergere — userul s-a răzgândit.

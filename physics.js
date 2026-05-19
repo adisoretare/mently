@@ -1,37 +1,4 @@
-/**
- * physics.js — Force-Directed Layout Algorithm
- * =============================================================================
- * DECIZII ARHITECTURALE (Cap. I — Algoritmi specifici, Cap. IV — Originalitate):
- *
- * 1. ALGORITM: Fruchterman-Reingold simplified
- *    Combinăm trei forțe pentru a obține un layout estetic și semantic:
- *      a) Repulsie Coulomb-like: TOATE perechile de noduri se resping (F ∝ 1/d²)
- *         → previne suprapunerea, dă "aer" grafului
- *      b) Atracție Hooke-like: muchiile sunt arcuri (F ∝ k·(d - rest))
- *         → tag-uri comune apropie nodurile; greutatea muchiei = forța arcului
- *      c) Centering: forță gentilă spre centru → graful nu fuge din viewport
- *
- * 2. INTEGRARE EULER explicită (poziție += viteză += accelerație·dt)
- *    Simplă, suficient de stabilă pentru graf < 500 noduri. Pentru sisteme mai
- *    mari am folosi Velocity Verlet pentru acuratețe mai bună.
- *
- * 3. ALPHA DECAY (preluat din d3-force)
- *    `alpha` scade gradual la fiecare tick → forțele se atenuează → sistemul
- *    converge într-un echilibru și se "calmează". Reset alpha pe interacțiune
- *    (drag, nod nou) → layout-ul reacționează dar nu rămâne agitat permanent.
- *
- * 4. VITEZĂ CLAMPED + DAMPING
- *    Damping pe viteză (vx *= 0.85) împiedică oscilațiile. Clamp pe magnitudinea
- *    vitezei previne "explozii" numerice când nodurile sunt foarte aproape.
- *
- * 5. PURE FUNCTIONS
- *    Toate funcțiile sunt fără side-effects din afara `sim` (obiectul de stare).
- *    Beneficiu: testabilitate; putem muta într-un Web Worker fără refactoring.
- *
- * COMPLEXITATE: O(n² + e) per tick. Pentru n < 500: cca. 250k ops/frame → 60fps OK.
- *               Scale-up > 1000 noduri ar cere Barnes-Hut (O(n·log n)).
- * =============================================================================
- */
+// Fruchterman-Reingold force-directed layout. Fără efecte secundare față de DOM/Canvas.
 
 /** Parametri impliciți — pot fi suprascriși la createSimulation(). */
 const DEFAULTS = {
@@ -45,8 +12,6 @@ const DEFAULTS = {
   alphaDecay: 0.0035,  // Cât scade alpha per tick.
   alphaMin: 0.005,     // Sub această valoare, simularea e "convergence".
 };
-
-/* ─────────────────────────── Factory ─────────────────────────── */
 
 /**
  * Creează un obiect de simulare.
@@ -65,8 +30,6 @@ export function createSimulation(width, height, params = {}) {
     alpha: 1,
   };
 }
-
-/* ─────────────────────────── Sync noduri ─────────────────────────── */
 
 /**
  * Sincronizează nodurile simulării cu lista de notițe din store.
@@ -106,8 +69,6 @@ export function syncNodes(sim, notes) {
   // Trezim simularea dacă structura s-a schimbat
   if (changed) sim.alpha = 1;
 }
-
-/* ─────────────────────────── Tick principal ─────────────────────────── */
 
 /**
  * Un pas al simulării. Aplică forțele, integrează, decrementează alpha.
@@ -218,8 +179,6 @@ export function tick(sim, edges) {
 
   return true;
 }
-
-/* ─────────────────────────── Manipulare directă ─────────────────────────── */
 
 export function getNode(sim, id) {
   return sim.nodes.get(id);

@@ -1,26 +1,4 @@
-/**
- * ui-form.js — Formular dual-mode (Add / Edit) + tag chips
- * =============================================================================
- * DECIZII ARHITECTURALE (Pasul "Edit Graph"):
- *
- * 1. DUAL-MODE prin SINGURĂ STATE VARIABLE: `editingId`
- *    null → add mode; string → edit mode pentru nota cu acel id.
- *    Beneficiu: o singură sursă de adevăr, fără flag-uri duplicate.
- *
- * 2. STATIC TEMPLATE + DYNAMIC TEXT
- *    Template-ul HTML e generat o singură dată în mount(). Schimbarea de mode
- *    DOAR actualizează textContent al heading/button/cancel — NU re-randează
- *    HTML-ul → focus și caret se păstrează intact.
- *
- * 3. RESILIENCE LA DELETE EXTERN
- *    Form se abonează la store. Dacă nota editată e ștearsă (clear all, sync
- *    din alt tab), form iese silent din edit mode → fără null reference errors.
- *
- * 4. ESCAPE = CANCEL (în edit mode)
- *    Standard UX: Esc anulează editarea curentă. Listener-ul verifică focus-ul
- *    pentru a nu intra în conflict cu Esc-ul global (clear selection on canvas).
- * =============================================================================
- */
+// Formular add/edit dual-mode. Comunică prin callbacks; nu cunoaște alte componente.
 
 import { t } from './i18n.js';
 import { addNote, updateNote, getNoteById, subscribe } from './store.js';
@@ -30,8 +8,6 @@ import {
   sanitizeTag,
   LIMITS,
 } from './security.js';
-
-/* ─────────────────────────── State ─────────────────────────── */
 
 let formEl = null;
 let titleInput = null;
@@ -47,8 +23,6 @@ let titleErrorEl = null;
 let tags = [];
 /** null = add mode; id string = edit mode pentru nota respectivă. */
 let editingId = null;
-
-/* ─────────────────────────── Mount ─────────────────────────── */
 
 export function mount(container) {
   container.innerHTML = template();
@@ -73,8 +47,6 @@ export function mount(container) {
     }
   });
 }
-
-/* ─────────────────────────── Public API ─────────────────────────── */
 
 /**
  * Intră în edit mode pentru o notiță existentă.
@@ -131,8 +103,6 @@ export function exitEditMode({ silent = false } = {}) {
 export function isEditing() {
   return editingId !== null;
 }
-
-/* ─────────────────────────── Template ─────────────────────────── */
 
 function template() {
   return `
@@ -227,8 +197,6 @@ function template() {
   `;
 }
 
-/* ─────────────────────────── Listeners ─────────────────────────── */
-
 function attachListeners() {
   tagInput.addEventListener('keydown', handleTagKeydown);
   tagWrapEl.addEventListener('click', handleTagWrapClick);
@@ -247,8 +215,6 @@ function attachListeners() {
     }
   });
 }
-
-/* ─────────────────────────── Tag chips ─────────────────────────── */
 
 function handleTagKeydown(e) {
   if (e.key === 'Enter') {
@@ -320,8 +286,6 @@ function renderChips() {
   });
 }
 
-/* ─────────────────────────── Submit (dual-mode) ─────────────────────────── */
-
 function handleSubmit(e) {
   e.preventDefault();
   hideFormError();
@@ -369,8 +333,6 @@ function resetForm() {
   titleInput.focus();
 }
 
-/* ─────────────────────────── Error display ─────────────────────────── */
-
 function showFormError(msg) {
   formErrorEl.textContent = msg;
   formErrorEl.classList.remove('hidden');
@@ -393,8 +355,6 @@ function flashError(el) {
   el.classList.add('border-red-500');
   setTimeout(() => el.classList.remove('border-red-500'), 500);
 }
-
-/* ─────────────────────────── Utility ─────────────────────────── */
 
 function truncate(str, maxLen) {
   if (!str || str.length <= maxLen) return str || '';

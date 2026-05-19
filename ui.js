@@ -243,8 +243,11 @@ function handleStateChange() {
   Tasks.render(notes);
 
   if (placeholderEl) {
-    placeholderEl.style.opacity = notes.length === 0 ? '1' : '0';
+    const isEmpty = notes.length === 0;
+    placeholderEl.style.opacity = isEmpty ? '1' : '0';
     placeholderEl.style.transition = 'opacity 0.5s var(--ease-out-soft)';
+    // opacity:0 nu ascunde elementul de screen readere — aria-hidden e necesar explicit
+    placeholderEl.setAttribute('aria-hidden', isEmpty ? 'false' : 'true');
   }
 }
 

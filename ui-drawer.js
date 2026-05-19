@@ -1,30 +1,4 @@
-/**
- * ui-drawer.js — Comportament drawer (mobile sidebar)
- * =============================================================================
- * DECIZII ARHITECTURALE (Cap. III — Interacțiune, accesibilitate):
- *
- * 1. PROGRESSIVE ENHANCEMENT
- *    Desktop ≥ 768px: sidebar e mereu vizibil, drawer.js practic stă inactiv.
- *    Mobile < 768px: sidebar e off-screen → hamburger / backdrop îl deschid.
- *    Aceeași HTML, aceeași logică — doar CSS-ul (media queries) schimbă layout-ul.
- *
- * 2. FOCUS MANAGEMENT (WCAG 2.4.3)
- *    - La deschidere: focus → primul element focusabil din sidebar (input titlu)
- *    - Focus trap: Tab/Shift+Tab nu părăsesc drawer-ul
- *    - La închidere: focus revine la elementul care a deschis drawer-ul
- *
- * 3. ESCAPE TO CLOSE
- *    Standard pentru modale/drawer. Listener global pe document, condiționat de
- *    starea isOpen → zero overhead când e închis.
- *
- * 4. BACKDROP CLICK
- *    Click pe overlay închide drawer-ul → pattern intuitiv preluat din iOS/Android.
- *
- * 5. ARIA STATE SYNC
- *    aria-expanded pe buton și aria-hidden pe drawer reflectă starea curentă →
- *    screen-readers anunță "expanded"/"collapsed" automat.
- * =============================================================================
- */
+// Drawer mobil: sidebar off-screen deschis/închis cu hamburger. Inactiv pe desktop ≥768px.
 
 import { t } from './i18n.js';
 import { announce, allFocusable, firstFocusable } from './dom.js';
@@ -37,8 +11,6 @@ let closeBtn = null;
 let backdropEl = null;
 let isOpen = false;
 let previouslyFocused = null;
-
-/* ─────────────────────────── Init ─────────────────────────── */
 
 export function init() {
   sidebarEl  = document.getElementById('sidebar');
@@ -65,8 +37,6 @@ export function init() {
     resizeFrame = requestAnimationFrame(syncToBreakpoint);
   }, { passive: true });
 }
-
-/* ─────────────────────────── Open / Close ─────────────────────────── */
 
 export function open() {
   if (isOpen || isDesktop()) return;
@@ -109,8 +79,6 @@ export function close() {
   }
 }
 
-/* ─────────────────────────── Keyboard ─────────────────────────── */
-
 function handleGlobalKeydown(e) {
   if (e.key === 'Escape' && isOpen) {
     close();
@@ -137,8 +105,6 @@ function handleSidebarKeydown(e) {
     first.focus();
   }
 }
-
-/* ─────────────────────────── Responsiveness ─────────────────────────── */
 
 function isDesktop() {
   return window.innerWidth >= MOBILE_BREAKPOINT;

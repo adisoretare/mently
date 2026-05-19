@@ -1,34 +1,13 @@
-/**
- * i18n.js — Texte UI centralizate (singura sursă de adevăr pentru toate string-urile vizibile)
- * =============================================================================
- * DE CE există acest fișier:
- *   Fără el, string-urile sunt împrăștiate prin toată baza de cod. La o traducere
- *   sau o corecție de copie, ar trebui să cauți în 8 fișiere în loc de unul.
- *   Avantaj secundar: jurat/reviewer vede instantaneu TOT ce apare în UI.
- *
- * REGULA: orice text vizibil pentru utilizator trebuie să vină de aici.
- *   - console.warn/error sunt exceptate — sunt mesaje pentru dezvoltator.
- *   - Atributele aria-label din index.html au fallback static (fără JS),
- *     dar sunt suprascrise la boot de ui.js cu valorile din t.a11y.*.
- *
- * FUNCȚIILE cu parametri permit pluralizare context-aware fără bibliotecă.
- *   Ex: t.list.countMany(5) → "5 notițe"
- * =============================================================================
- */
+// Singura sursă de adevăr pentru toate string-urile vizibile. Orice text UI vine de aici.
 
 const ro = {
   brand: 'Mently',
-  // Tagline-ul apare în sidebar sub logo și în <title> pagină.
-  // Era "Visual Knowledge Graph" — tradus complet pentru coerență vizuală.
   tagline: 'Graf vizual de cunoștințe',
 
-  // ─── Statisticile din sidebar (4 carduri: noduri, muchii, tag-uri, grupuri) ───
-  // Namespace separat ca să nu polueze `list` sau `a11y`.
   stats: {
     nodes: 'Noduri',
     edges: 'Muchii',
     tags: 'Tag-uri',
-    // "Cmps" era abreviere opacă chiar și în engleză; "Grupuri" e mai clar.
     components: 'Grupuri',
   },
 
@@ -46,7 +25,6 @@ const ro = {
     submitEdit: 'Salvează modificările',
     cancel: 'Renunță',
     optional: 'opțional',
-    // Label-uri accesibilitate — anterior hardcodate în template-ul HTML din ui-form.js
     requiredHint: '(obligatoriu)',
     tagsAddedLabel: 'Tag-uri adăugate',
     removeTagLabel: (tag) => `Șterge tag ${tag}`,
@@ -55,8 +33,6 @@ const ro = {
   list: {
     heading: 'Notițe',
     empty: 'Niciun nod încă. Folosește formularul de mai sus.',
-    // Mesajul hero din starea goală (când nu există nicio notiță).
-    // Înlocuiește "Empty mind, full potential." care rămăsese în engleză.
     emptyHero: 'Minte goală, potențial maxim.',
     countOne: '1 notiță',
     countMany: (n) => `${n} notițe`,
@@ -197,8 +173,6 @@ const ro = {
   },
 
   meta: {
-    // Textul hero din canvas-ul gol.
-    // Era "A blank constellation." — rămas în engleză; tradus acum.
     blank: 'O constelație goală.',
     blankHint: 'Adaugă o notiță în panoul lateral — graful se construiește din tag-urile comune.',
   },

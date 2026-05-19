@@ -1,33 +1,4 @@
-/**
- * graph.js — Logica matematică a grafului neorientat
- * =============================================================================
- * DECIZII ARHITECTURALE (Cap. I — Algoritmi specifici):
- *
- * 1. PUR-FUNCȚIONAL
- *    Toate funcțiile sunt fără efecte secundare. Primesc date, întorc date noi.
- *    Beneficii: ușor de testat (unit tests fără mock-uri), thread-safe (poate fi
- *    mutat într-un Web Worker fără refactoring în Pasul 3 dacă apar probleme de
- *    performanță cu mulți noduri).
- *
- * 2. EDGES SUNT DERIVATE, NU STOCATE
- *    Le calculăm din tag-urile notițelor → o singură sursă de adevăr.
- *    Imposibil să existe muchii orfane sau inconsistențe noduri ↔ muchii.
- *
- * 3. INVERTED INDEX pentru calculul muchiilor
- *    Naive O(n²·t) → Optimized O(t · Σ k²) folosind tag→noduri (k = noduri/tag).
- *    Pentru distribuțiile tipice (Zipf), e dramatic mai rapid; pentru n=1000 noduri
- *    și 5 tag-uri medii, diferența e ~200x.
- *
- * 4. CANONICAL EDGE KEY pentru graf NEORIENTAT
- *    Cheia muchiei e `${min(a,b)}|${max(a,b)}` → deduplicare automată; muchia
- *    (A,B) și (B,A) sunt aceeași intrare.
- *
- * 5. PONDERI SEMANTICE
- *    weight = numărul tag-urilor comune. Vizualizat ca grosime de linie în Canvas
- *    (Pasul 3) → utilizatorul vede dintr-o privire "cât de strâns" sunt legate două
- *    notițe.
- * =============================================================================
- */
+// Model de graf neorientat derivat din tag-uri. Funcții pure fără efecte secundare.
 
 /**
  * @typedef {Object} Edge
@@ -37,23 +8,13 @@
  * @property {string[]} sharedTags - lista tag-urilor comune (sortate)
  */
 
-/* ─────────────────────────── Build edges ─────────────────────────── */
-
 /**
- * Construiește muchiile prin inverted index pe tag-uri.
- *
- * Pași:
- *   1. Construim un map tag → Set<noteId>.
- *   2. Pentru fiecare tag, generăm perechile (noteId_i, noteId_j) cu i<j.
- *   3. Acumulăm în edgeMap (cheie canonică) → weight++ și sharedTags.push(tag).
- *
  * @param {Array<{id:string, tags:string[]}>} notes
  * @returns {Edge[]}
  */
 export function buildEdges(notes) {
   if (!Array.isArray(notes) || notes.length < 2) return [];
 
-  // Pas 1: inverted index tag → Set<noteId>
   const tagToNotes = new Map();
   for (const note of notes) {
     if (!note || !Array.isArray(note.tags)) continue;
@@ -63,7 +24,6 @@ export function buildEdges(notes) {
     }
   }
 
-  // Pas 2+3: acumulează muchiile cu cheie canonică
   const edgeMap = new Map(); // `${a}|${b}` → Edge
 
   for (const [tag, idSet] of tagToNotes) {
@@ -91,8 +51,6 @@ export function buildEdges(notes) {
   return [...edgeMap.values()];
 }
 
-/* ─────────────────────────── Adjacency ─────────────────────────── */
-
 /**
  * Adjacency map: id → Set<id>. Lookup O(1) la vecinii unui nod.
  * Necesar pentru BFS (componente conexe) și pentru forțele algoritmului
@@ -111,8 +69,6 @@ export function buildAdjacency(edges) {
   }
   return adj;
 }
-
-/* ─────────────────────────── BFS — componenta conexă ─────────────────────────── */
 
 /**
  * BFS clasic. Returnează Set-ul id-urilor accesibile din `startId`.
@@ -164,8 +120,6 @@ export function allConnectedComponents(notes, adjacency) {
   return components;
 }
 
-/* ─────────────────────────── Queries pe tag-uri ─────────────────────────── */
-
 /**
  * Toate id-urile notițelor care conțin un tag dat. Tag-ul e normalizat lowercase.
  * Folosit la "click pe tag" → highlight pe Canvas.
@@ -201,8 +155,6 @@ export function getTagFrequency(notes) {
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
-
-/* ─────────────────────────── Sistemul solar — soare + adâncimi ─────────────────────────── */
 
 /**
  * Returnează gradul unui nod (numărul de vecini).
@@ -324,8 +276,6 @@ function computeDepths(sunId, adjacency) {
   }
   return { depths, childCounts, bfsParent };
 }
-
-/* ─────────────────────────── Aggregator ─────────────────────────── */
 
 /**
  * Construiește modelul complet într-o singură trecere.

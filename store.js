@@ -1,14 +1,4 @@
-/**
- * store.js — Data Access Layer
- * =============================================================================
- * REFACTOR (Pasul 4): toată sanitizarea/validarea este delegată către security.js.
- * Store-ul NU mai conține expresii regex sau slice-uri inline — apelează doar
- * funcții semantice (`sanitizeTitle`, `sanitizeContent`, `sanitizeTags`).
- *
- * Beneficiu pentru audit: scanezi store.js și vezi că NIMIC nu ajunge în
- * state fără să treacă prin security.js. Single point of validation.
- * =============================================================================
- */
+// Store.js trimite toată validarea la security.js — singura sursă de adevăr pentru date.
 
 import {
   sanitizeTitle,
@@ -66,8 +56,6 @@ const initialState = () => ({
 
 let state = null;
 const subscribers = new Set();
-
-/* ─────────────────────────── Persistence ─────────────────────────── */
 
 /**
  * Hidratare din localStorage. Tratează:
@@ -147,8 +135,6 @@ function saveToStorage() {
   }
 }
 
-/* ─────────────────────────── Pub/Sub ─────────────────────────── */
-
 function notify() {
   for (const fn of subscribers) {
     try { fn(state); } catch (err) { console.error('[store] subscriber error:', err); }
@@ -160,8 +146,6 @@ export function subscribe(fn) {
   subscribers.add(fn);
   return () => subscribers.delete(fn);
 }
-
-/* ─────────────────────────── Public API ─────────────────────────── */
 
 export function init() {
   state = loadFromStorage();
