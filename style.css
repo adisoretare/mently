@@ -476,7 +476,7 @@ article.done .mently-card-title {
 }
 .tasks-show-done-btn:hover {
   color: var(--c-paper-300);
-  border-color: var(--c-ink-600, var(--c-ink-700));
+  border-color: var(--c-ink-700);
 }
 .tasks-list {
   overflow: hidden;
@@ -532,7 +532,7 @@ article.done .mently-card-title {
 }
 .focus-bar-nav:hover:not(:disabled) {
   color: var(--c-paper-100);
-  border-color: var(--c-ink-600, var(--c-ink-700));
+  border-color: var(--c-paper-500);
 }
 .focus-bar-nav:disabled {
   opacity: 0.3;
