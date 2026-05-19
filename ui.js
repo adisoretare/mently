@@ -1,17 +1,20 @@
 /**
- * ui.js — Orchestrator UI (Composition layer)
+ * ui.js — Orchestrator UI (Composition / Mediator)
  * =============================================================================
- * Compune componentele: Form, List, Drawer, Canvas + secțiunea de stats.
- * Wire-uiește selecția bidirecțional (card ↔ nod) și tag filtering (card → graf).
+ * Compune componentele: Form, List, Drawer, Canvas + stats.
+ * Wire-uiește:
+ *   - selecția bidirecțională sidebar ↔ canvas
+ *   - tag filter (card → graf highlight)
+ *   - EDIT flow: list emite onEdit → form intră în edit mode + canvas selectează
  *
- * PATTERN: Mediator. ui.js cunoaște List și Canvas; ele NU se cunosc între ele.
- * Avantaj: poți schimba renderer-ul (Canvas → SVG → WebGL) fără să atingi List.
+ * PATTERN: Mediator. ui.js cunoaște componentele; ele NU se cunosc între ele.
  * =============================================================================
  */
 
 import { subscribe, getNotes, getNoteById } from './store.js';
 import { buildGraphModel } from './graph.js';
-import { setAriaLive, announce, escapeHtml } from './dom.js';
+import { setAriaLive, announce } from './dom.js';
+import { escapeHtml } from './security.js';
 import { t } from './i18n.js';
 import * as Form from './ui-form.js';
 import * as List from './ui-list.js';
@@ -38,20 +41,15 @@ export function init() {
     return;
   }
 
-  // 1. Schelet sidebar (fără footer, la cererea utilizatorului)
   sidebarEl.innerHTML = renderSidebarShell();
 
-  // 2. Mount componente sidebar
   Form.mount(sidebarEl.querySelector('#form-section'));
   List.mount(sidebarEl.querySelector('#list-section'));
   statsEl = sidebarEl.querySelector('#stats-section');
   Drawer.init();
-
-  // 3. Inițializează renderer-ul Canvas
   Canvas.init(canvasEl);
 
-  // 4. WIRE bidirectional selection (mediator pattern)
-  //    sidebar click → graf highlights nodul + scroll-in-view (mental)
+  // ─── Selection sync sidebar ↔ canvas ───
   List.onSelect((id) => {
     Canvas.setSelected(id);
     if (id) {
@@ -59,18 +57,23 @@ export function init() {
       if (note) announce(t.a11y.nodeSelected(note.title));
     }
   });
-  //    graf click → sidebar evidențiază cardul
   Canvas.onSelect((id) => {
     List.setSelectedId(id);
     if (!id) announce(t.a11y.selectionCleared);
   });
 
-  // 5. Tag click în sidebar → highlight componentă conexă în graf
+  // ─── Tag click sidebar → highlight componentă ───
   List.onTagClick((tag) => {
     Canvas.highlightByTag(tag);
   });
 
-  // 6. Reactivitate la modificări de store
+  // ─── EDIT flow: list → form (cu selecție auto pe canvas) ───
+  List.onEdit((id) => {
+    Form.enterEditMode(id);
+    Canvas.setSelected(id);
+    List.setSelectedId(id);
+  });
+
   subscribe(handleStateChange);
   handleStateChange();
 }
@@ -82,8 +85,6 @@ export { announce };
 function renderSidebarShell() {
   return `
     <div class="h-full flex flex-col animate-fade-up">
-
-      <!-- Brand header + close button (mobile) -->
       <header class="flex items-start justify-between px-7 pt-8 pb-5 flex-shrink-0">
         <div>
           <h1 class="font-display italic text-5xl leading-none tracking-tight">
@@ -105,12 +106,10 @@ function renderSidebarShell() {
         </button>
       </header>
 
-      <!-- Stats strip -->
       <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="Statistici graf"></div>
 
-      <!-- Scrollable: form + list -->
       <div class="flex-1 overflow-y-auto mently-scroll px-7 pb-8 space-y-6">
-        <section id="form-section" aria-label="${escapeHtml(t.form.heading)}"></section>
+        <section id="form-section" aria-label="Formular notițe"></section>
         <section id="list-section" aria-label="${escapeHtml(t.list.heading)}"></section>
       </div>
     </div>
@@ -136,7 +135,6 @@ function handleStateChange() {
 
   List.render(notes);
 
-  // Placeholder fade când există noduri
   if (placeholderEl) {
     placeholderEl.style.opacity = notes.length === 0 ? '1' : '0';
     placeholderEl.style.transition = 'opacity 0.5s var(--ease-out-soft)';

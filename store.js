@@ -1,48 +1,36 @@
 /**
- * store.js — Data Access Layer (Strat de persistență)
+ * store.js — Data Access Layer
  * =============================================================================
- * DECIZII ARHITECTURALE (Cap. I — Inginerie web):
+ * REFACTOR (Pasul 4): toată sanitizarea/validarea este delegată către security.js.
+ * Store-ul NU mai conține expresii regex sau slice-uri inline — apelează doar
+ * funcții semantice (`sanitizeTitle`, `sanitizeContent`, `sanitizeTags`).
  *
- * 1. SINGLE SOURCE OF TRUTH
- *    Store-ul deține întreaga stare a aplicației. ui.js și graph.js sunt consumeri
- *    PURI — citesc starea, nu o mută direct. Mutațiile trec exclusiv prin API-ul public
- *    (addNote, updateNote, deleteNote, replaceState). Beneficiu: data flow unidirecțional,
- *    debugging trivial, testabilitate (poți injecta un mock pentru localStorage).
- *
- * 2. OBSERVER PATTERN
- *    Componentele se abonează la schimbări via subscribe(callback). Evităm cuplarea
- *    strânsă store ↔ UI și permitem multiple consumeri (de ex. analytics, undo-stack).
- *
- * 3. SCHEMA VERSIONING
- *    STORE_VERSION + cale de migrare → permite evoluția schemei fără pierderi de date.
- *
- * 4. DEFENSIVE COPYING
- *    getState/getNotes returnează copii → caller-ul nu poate corupe starea internă.
- *
- * 5. EDGES NU SE STOCHEAZĂ
- *    Sunt derivate din tag-uri comune (vezi graph.js). O singură sursă de adevăr;
- *    imposibil să existe inconsistență noduri ↔ muchii.
- *
- * 6. FAIL-SOFT
- *    localStorage indisponibil (Safari private, quota plină) NU prăbușește aplicația;
- *    folosim un fallback in-memory + log warning.
+ * Beneficiu pentru audit: scanezi store.js și vezi că NIMIC nu ajunge în
+ * state fără să treacă prin security.js. Single point of validation.
  * =============================================================================
  */
+
+import {
+  sanitizeTitle,
+  sanitizeContent,
+  sanitizeTags,
+  validateNote,
+  generateId,
+  createRateLimiter,
+  LIMITS,
+  SecurityError,
+} from './security.js';
 
 const STORAGE_KEY = 'mently:v1:state';
 const STORE_VERSION = 1;
 
 /**
- * @typedef {Object} Note
- * @property {string}   id        - UUID v4
- * @property {string}   title     - Titlu, max 200 caractere (sanitizat în Pasul 4)
- * @property {string}   content   - Descriere, max 10.000 caractere
- * @property {string[]} tags      - Lowercase, fără duplicate, fără string-uri goale
- * @property {number}   createdAt - Epoch ms
- * @property {number}   updatedAt - Epoch ms
+ * Rate limiter pentru addNote — 30 inserări/minut.
+ * Aplicat la TOATE apelurile addNote (formular sau programatic via __mently.Store).
+ * replaceNotes() bypass-uiește intenționat → import bulk e permis.
  */
+const insertLimiter = createRateLimiter(30, 60_000);
 
-/** Stare inițială — factory function (evităm referință partajată între reseturi). */
 const initialState = () => ({
   version: STORE_VERSION,
   notes: [],
@@ -53,48 +41,20 @@ const initialState = () => ({
   },
 });
 
-/** Singleton in-memory; null până la init(). */
 let state = null;
-/** Set garantează unicitate; iterare cu insertion order. */
 const subscribers = new Set();
-
-/* ─────────────────────────── Utilities ─────────────────────────── */
-
-/**
- * UUID v4 — preferăm crypto.randomUUID (RFC 4122, criptografic secure).
- * Fallback pentru browsere mai vechi care nu îl expun încă.
- */
-function uuid() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * Normalizează tag-uri: trim, lowercase, fără goluri, fără duplicate.
- * Critic pentru matching corect în graph.js (case-insensitive).
- */
-function normalizeTags(tags) {
-  if (!Array.isArray(tags)) return [];
-  return [...new Set(
-    tags
-      .map((t) => (typeof t === 'string' ? t.trim().toLowerCase() : ''))
-      .filter(Boolean)
-  )];
-}
 
 /* ─────────────────────────── Persistence ─────────────────────────── */
 
 /**
  * Hidratare din localStorage. Tratează:
- *   - localStorage inaccesibil → returnează state nou (fail-soft).
- *   - JSON corupt → reinițializare cu warning.
- *   - schemă veche → punct de migrare (pregătit, gol acum).
+ *   - localStorage indisponibil (Safari private) → fallback in-memory
+ *   - JSON corupt → state fresh
+ *   - Note individuale corupte/manipulate (DevTools tampering) → filtrate
+ *
+ * SECURITATE: chiar și starea din PROPRIUL localStorage e tratată ca untrusted.
+ * Un atacator cu acces fizic la calculator ar putea injecta JSON malițios via
+ * DevTools. Validarea per-câmp previne ca acel JSON să corupă UI-ul.
  */
 function loadFromStorage() {
   try {
@@ -102,7 +62,6 @@ function loadFromStorage() {
     if (!raw) return initialState();
 
     const parsed = JSON.parse(raw);
-
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.notes)) {
       console.warn('[store] Stare coruptă în localStorage. Resetez.');
       return initialState();
@@ -110,27 +69,43 @@ function loadFromStorage() {
 
     if (parsed.version !== STORE_VERSION) {
       console.info(`[store] Migrare schemă: ${parsed.version} → ${STORE_VERSION}`);
-      // Hook pentru migrări viitoare (ex: v1 → v2 ar adăuga câmp X).
+      // hook pentru migrări viitoare
     }
 
-    return { ...initialState(), ...parsed };
+    // DEFENSE IN DEPTH: re-validăm fiecare notă chiar dacă vine din storage-ul nostru
+    const validNotes = [];
+    let dropped = 0;
+    for (const raw of parsed.notes) {
+      const valid = validateNote(raw);
+      if (valid) {
+        if (!valid.id) valid.id = generateId();
+        validNotes.push(valid);
+      } else {
+        dropped++;
+      }
+    }
+    if (dropped > 0) {
+      console.warn(`[store] ${dropped} note corupte ignorate la încărcare.`);
+    }
+
+    return {
+      version: STORE_VERSION,
+      notes: validNotes,
+      meta: { ...initialState().meta, ...(parsed.meta || {}) },
+    };
   } catch (err) {
     console.error('[store] localStorage indisponibil — rulez in-memory:', err);
     return initialState();
   }
 }
 
-/**
- * Persistare. Eșuează silent la quota exceeded — UI poate fi notificat ulterior.
- * @returns {boolean} success
- */
 function saveToStorage() {
   try {
     state.meta.updatedAt = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
   } catch (err) {
-    console.error('[store] Persistare eșuată (probabil quota):', err);
+    console.error('[store] Persistare eșuată:', err);
     return false;
   }
 }
@@ -139,20 +114,10 @@ function saveToStorage() {
 
 function notify() {
   for (const fn of subscribers) {
-    try {
-      fn(state);
-    } catch (err) {
-      // Un subscriber nu trebuie să blocheze ceilalți → izolat în try/catch.
-      console.error('[store] subscriber a aruncat eroare:', err);
-    }
+    try { fn(state); } catch (err) { console.error('[store] subscriber error:', err); }
   }
 }
 
-/**
- * Subscribe la modificări. Returnează funcția de unsubscribe (clasic).
- * @param {(state: object) => void} fn
- * @returns {() => void}
- */
 export function subscribe(fn) {
   if (typeof fn !== 'function') throw new TypeError('subscribe necesită o funcție');
   subscribers.add(fn);
@@ -161,23 +126,19 @@ export function subscribe(fn) {
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
-/** Bootstrap. Apelat o singură dată din main.js. */
 export function init() {
   state = loadFromStorage();
   return getState();
 }
 
-/** Copie defensivă a întregii stări. */
 export function getState() {
   return { ...state, notes: state.notes.map((n) => ({ ...n, tags: [...n.tags] })) };
 }
 
-/** Lista notițelor (copie). */
 export function getNotes() {
   return state.notes.map((n) => ({ ...n, tags: [...n.tags] }));
 }
 
-/** Caută o notiță după id. Returnează null dacă nu există. */
 export function getNoteById(id) {
   const found = state.notes.find((n) => n.id === id);
   return found ? { ...found, tags: [...found.tags] } : null;
@@ -185,18 +146,27 @@ export function getNoteById(id) {
 
 /**
  * Adaugă o notiță nouă.
- * IMPORTANT: input-urile string TREBUIE deja sanitizate de security.js (Pasul 4).
- * Aici doar normalizăm și validăm structural.
+ * Sanitizarea e delegată complet către security.js → date curate ÎN store.
  */
 export function addNote({ title, content, tags } = {}) {
-  const cleanTitle = String(title ?? '').trim();
+  // Rate limit — protejează împotriva spam-ului (form sau script automat).
+  // Verificat ÎNAINTE de orice procesare → economie CPU pe rafale de spam.
+  if (!insertLimiter.tryAcquire()) {
+    throw new SecurityError('Prea multe inserări consecutive. Așteaptă câteva secunde.');
+  }
+  // Cap pe numărul total — DoS prevention (n² în physics.js devine impractical >1k)
+  if (state.notes.length >= LIMITS.NOTES_MAX_COUNT) {
+    throw new SecurityError(`Limită atinsă: maxim ${LIMITS.NOTES_MAX_COUNT} notițe.`);
+  }
+
+  const cleanTitle = sanitizeTitle(title);
   if (!cleanTitle) throw new Error('Titlul este obligatoriu.');
 
   const note = {
-    id: uuid(),
-    title: cleanTitle.slice(0, 200),
-    content: String(content ?? '').trim().slice(0, 10000),
-    tags: normalizeTags(tags),
+    id: generateId(),
+    title: cleanTitle,
+    content: sanitizeContent(content),
+    tags: sanitizeTags(tags),
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -207,15 +177,18 @@ export function addNote({ title, content, tags } = {}) {
   return { ...note, tags: [...note.tags] };
 }
 
-/** PATCH semantics: actualizează doar câmpurile prezente în `patch`. */
 export function updateNote(id, patch = {}) {
   const idx = state.notes.findIndex((n) => n.id === id);
   if (idx === -1) return null;
 
   const next = { ...state.notes[idx] };
-  if ('title' in patch)   next.title   = String(patch.title ?? '').trim().slice(0, 200);
-  if ('content' in patch) next.content = String(patch.content ?? '').trim().slice(0, 10000);
-  if ('tags' in patch)    next.tags    = normalizeTags(patch.tags);
+  if ('title' in patch) {
+    const cleaned = sanitizeTitle(patch.title);
+    if (!cleaned) throw new Error('Titlul este obligatoriu.');
+    next.title = cleaned;
+  }
+  if ('content' in patch) next.content = sanitizeContent(patch.content);
+  if ('tags' in patch)    next.tags    = sanitizeTags(patch.tags);
   next.updatedAt = Date.now();
 
   state.notes[idx] = next;
@@ -224,7 +197,6 @@ export function updateNote(id, patch = {}) {
   return { ...next, tags: [...next.tags] };
 }
 
-/** Șterge o notiță; returnează true dacă a existat. */
 export function deleteNote(id) {
   const before = state.notes.length;
   state.notes = state.notes.filter((n) => n.id !== id);
@@ -234,7 +206,6 @@ export function deleteNote(id) {
   return true;
 }
 
-/** Reset complet — folosit la "Import" (Pasul 5) și pentru testare. */
 export function clearAll() {
   state = initialState();
   saveToStorage();
@@ -242,39 +213,29 @@ export function clearAll() {
 }
 
 /**
- * Înlocuiește starea cu un payload extern (Pasul 5 — Import).
- * Validează STRICT structura → protejează împotriva JSON-urilor malițioase/malformate.
+ * Înlocuiește starea cu un set de note pre-validate (Pasul 5 — Import).
+ * Caller-ul (ui sau test) trebuie să fi rulat deja `parseAndValidateImport`
+ * din security.js. Aici doar adoptăm rezultatul.
  */
-export function replaceState(payload) {
-  if (!payload || typeof payload !== 'object') {
-    throw new Error('Payload invalid: așteptam obiect.');
+export function replaceNotes(validatedNotes) {
+  if (!Array.isArray(validatedNotes)) {
+    throw new TypeError('replaceNotes așteaptă un array de note validate.');
   }
-  if (!Array.isArray(payload.notes)) {
-    throw new Error('Câmpul `notes` lipsește sau nu este array.');
-  }
-
-  const sanitized = {
+  state = {
     version: STORE_VERSION,
-    notes: payload.notes
-      .filter((n) => n && typeof n === 'object' && typeof n.title === 'string')
-      .map((n) => ({
-        id:        typeof n.id === 'string' && n.id ? n.id : uuid(),
-        title:     String(n.title).trim().slice(0, 200),
-        content:   String(n.content ?? '').trim().slice(0, 10000),
-        tags:      normalizeTags(n.tags),
-        createdAt: Number.isFinite(n.createdAt) ? n.createdAt : Date.now(),
-        updatedAt: Number.isFinite(n.updatedAt) ? n.updatedAt : Date.now(),
-      })),
-    meta: { ...initialState().meta, ...(payload.meta || {}) },
+    notes: validatedNotes.map((n) => ({ ...n, tags: [...n.tags] })),
+    meta: {
+      createdAt: state?.meta?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      lastExportAt: state?.meta?.lastExportAt || null,
+    },
   };
-
-  state = sanitized;
   saveToStorage();
   notify();
   return getState();
 }
 
-/** Serializare pentru export (Pasul 5). Indentat = lizibil pentru utilizator. */
+/** Serializare pentru export (Pasul 5). */
 export function exportJSON() {
   state.meta.lastExportAt = Date.now();
   saveToStorage();

@@ -7,14 +7,40 @@
   <meta name="theme-color" content="#0c0a09" />
   <title>Mently — Visual Knowledge Graph</title>
 
-  <!-- Favicon inline (SVG data-URI) — zero requests HTTP, on-brand cu paleta amber/ink -->
+  <!--
+    SECURITATE — HEADERE HARDENING (Cap. V):
+    Content-Security-Policy restricționează ce poate fi încărcat/executat în pagină.
+    Chiar dacă apare un XSS, atacatorul nu poate încărca scripturi de pe alte domenii.
+
+    TRADE-OFFS EXPLICITE:
+      • 'unsafe-inline' (script): NECESAR pentru window.tailwind.config inline.
+      • 'unsafe-eval' (script): NECESAR pentru JIT-ul runtime al Tailwind CDN
+         (generează clasele utility la runtime via Function()).
+      • Ambele ar fi eliminate într-un build de producție cu Tailwind pre-compilat.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src 'self' data: https://fonts.gstatic.com;
+    img-src 'self' data:;
+    connect-src 'self';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+  " />
+  <!--
+    NOTĂ: frame-ancestors funcționează doar ca HTTP response header (nu via meta).
+    Într-un deploy real l-am seta din nginx/Apache: `add_header Content-Security-Policy "...frame-ancestors 'none'..."`.
+    Alternativ, X-Frame-Options ar funcționa via meta în vechi browsere, dar e deprecated.
+  -->
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+  <!-- Favicon inline (SVG data-URI) — zero requests HTTP, on-brand -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0a09'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='22' fill='%23fb923c'%3EM%3C/text%3E%3C/svg%3E" />
 
-  <!--
-    DECIZIE ARHITECTURALĂ (Cap. I — Inginerie web):
-    Tailwind CDN pentru viteza de dezvoltare. Producția → PostCSS + JIT.
-    Configurăm tema brand ÎNAINTE de a încărca scriptul.
-  -->
+  <!-- Tailwind config (must be before tailwind script) -->
   <script>
     window.tailwind = window.tailwind || {};
     window.tailwind.config = {
@@ -35,7 +61,7 @@
       },
     };
   </script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -48,18 +74,12 @@
 </head>
 <body class="font-sans bg-ink-950 text-paper-100 antialiased overflow-hidden">
 
-  <!-- Skip link (accesibilitate WCAG 2.4.1) — vizibil doar la focus prin Tab -->
+  <!-- Skip link (WCAG 2.4.1) — primul focusable -->
   <a href="#canvas-wrapper" class="skip-link">Sari la graf</a>
 
-  <!--
-    LAYOUT
-    Desktop ≥768px: sidebar + canvas în flex row (sidebar fix-width, canvas flex-1).
-    Mobile <768px:  canvas full-screen; sidebar = drawer fix poziționat off-screen,
-                    deschis prin butonul hamburger.
-  -->
   <div id="app" class="h-[100dvh] w-screen relative md:flex overflow-hidden" role="application" aria-label="Mently — visual knowledge graph">
 
-    <!-- Hamburger button (mobile only) -->
+    <!-- Hamburger (mobile only) -->
     <button
       id="drawer-open"
       type="button"
@@ -75,18 +95,14 @@
       </svg>
     </button>
 
-    <!-- Backdrop (mobile only, visible doar când drawer e deschis) -->
+    <!-- Backdrop (mobile drawer overlay) -->
     <div
       id="drawer-backdrop"
       class="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm md:hidden opacity-0 pointer-events-none transition-opacity duration-300"
       aria-hidden="true"
     ></div>
 
-    <!--
-      SIDEBAR
-      - Desktop: relative, parte din flex-row layout
-      - Mobile:  fixed, translateX(-100%) by default; .is-open îl aduce în vizualizare
-    -->
+    <!-- Sidebar -->
     <aside
       id="sidebar"
       class="mently-sidebar fixed md:relative md:flex-shrink-0 inset-y-0 left-0 z-40 w-[88vw] max-w-[400px] md:w-[clamp(320px,30vw,460px)] md:max-w-none bg-ink-900/95 md:bg-ink-900/60 backdrop-blur-md border-r border-ink-800 overflow-hidden"
@@ -96,7 +112,7 @@
       <!-- Conținut injectat de ui.js -->
     </aside>
 
-    <!-- Canvas / Main -->
+    <!-- Canvas -->
     <main
       id="canvas-wrapper"
       class="absolute inset-0 md:relative md:flex-1 md:inset-auto md:h-full bg-ink-950"
@@ -104,12 +120,9 @@
       tabindex="-1"
     >
       <canvas id="graph-canvas" class="absolute inset-0 w-full h-full" aria-hidden="true"></canvas>
-
-      <!-- Texturi de fundal -->
       <div class="pointer-events-none absolute inset-0 bg-grain opacity-[0.04]"></div>
       <div class="pointer-events-none absolute inset-0 bg-vignette"></div>
 
-      <!-- Placeholder canvas (eliminat când există notițe) -->
       <div id="canvas-placeholder" class="absolute inset-0 flex items-center justify-center text-center px-6 pointer-events-none">
         <div class="max-w-md">
           <p class="font-display italic text-5xl text-paper-300/40 leading-tight">A blank<br/>constellation.</p>
@@ -119,10 +132,8 @@
     </main>
   </div>
 
-  <!-- ARIA live region pentru screen-reader announcements -->
   <div id="aria-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Entry point -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>

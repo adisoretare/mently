@@ -1,8 +1,8 @@
 /**
  * i18n.js — Texte UI centralizate
  * =============================================================================
- * Toate string-urile vizibile sunt aici. Permite localizare (en/ro/fr/…) cu
- * un singur fișier de tradus. Funcțiile cu parametri permit pluralizare.
+ * Toate string-urile vizibile sunt aici. Permite localizare cu un singur fișier
+ * de tradus. Funcțiile cu parametri permit pluralizare context-aware.
  * =============================================================================
  */
 
@@ -11,7 +11,8 @@ const ro = {
   tagline: 'Visual Knowledge Graph',
 
   form: {
-    heading: 'Adaugă un nod',
+    headingAdd: 'Adaugă un nod',
+    headingEdit: 'Editezi',
     titleLabel: 'Titlu',
     titlePlaceholder: 'O idee, un concept, o întrebare…',
     contentLabel: 'Descriere',
@@ -19,7 +20,9 @@ const ro = {
     tagsLabel: 'Tag-uri',
     tagsPlaceholder: 'Scrie un tag și apasă Enter',
     tagsHint: 'Tag-urile comune devin muchii în graf.',
-    submit: 'Adaugă în graf',
+    submitAdd: 'Adaugă în graf',
+    submitEdit: 'Salvează modificările',
+    cancel: 'Renunță',
     optional: 'opțional',
   },
 
@@ -28,11 +31,13 @@ const ro = {
     empty: 'Niciun nod încă. Folosește formularul de mai sus.',
     countOne: '1 notiță',
     countMany: (n) => `${n} notițe`,
+    editLabel: (title) => `Editează: ${title}`,
     deleteLabel: (title) => `Șterge: ${title}`,
     selectLabel: (title) => `Selectează: ${title}`,
     tagFilterLabel: (tag) => `Filtrează după tag: ${tag}`,
     clearFilterLabel: 'Anulează filtrul',
-    filterActive: (tag) => `Filtru activ: ${tag}`,
+    clearAll: 'Șterge tot graful',
+    clearAllConfirm: 'Confirmă — click din nou',
   },
 
   errors: {
@@ -52,6 +57,7 @@ const ro = {
   a11y: {
     skipToGraph: 'Sari la graf',
     noteAdded: (title) => `Notița "${title}" a fost adăugată.`,
+    noteUpdated: (title) => `Notița "${title}" a fost actualizată.`,
     noteDeleted: (title) => `Notița "${title}" a fost ștearsă.`,
     noteSelected: (title) => `Notița "${title}" este selectată.`,
     nodeSelected: (title) => `Nodul "${title}" este selectat.`,
@@ -59,6 +65,10 @@ const ro = {
     tagHighlighted: (tag) => `Componenta conexă pentru tag-ul "${tag}" este evidențiată.`,
     drawerOpened: 'Panou deschis.',
     drawerClosed: 'Panou închis.',
+    editingStart: (title) => `Editezi notița "${title}".`,
+    editingCancel: 'Editare anulată.',
+    clearAllArmed: 'Confirmă ștergerea totală — click din nou pentru a continua.',
+    clearAllDone: 'Graful a fost șters complet.',
   },
 
   meta: {

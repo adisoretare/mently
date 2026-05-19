@@ -1,41 +1,28 @@
 /**
  * main.js — Composition Root (Bootstrap aplicație)
  * =============================================================================
- * DECIZIE ARHITECTURALĂ (Cap. I — Modularitate):
- *
- * Composition Root explicit. Toate dependențele între module sunt rezolvate
- * într-un singur loc. Modulele individuale NU se cunosc între ele direct decât
- * prin API-urile lor publice (export-uri). Beneficii:
- *
- *   - testabilitate: poți înlocui Store cu un mock în teste fără să atingi ui.js
- *   - readability: dacă deschizi proiectul prima dată, main.js îți spune flow-ul
- *   - inversion of control: dependențele "curg" de sus în jos
- *
- * Acest fișier face EXACT trei lucruri:
- *   1. Inițializează store-ul (hidratare din localStorage)
- *   2. Inițializează UI-ul (atașează listeners, render)
- *   3. Gestionează erorile globale (uncaught + promise rejection)
+ * REFACTOR (Pasul 4): expune Security în __mently pentru testare/demo în consolă.
+ * Juratul poate proba live că XSS-ul e blocat:
+ *   __mently.Security.escapeHtml('<script>alert(1)</script>')
+ *   __mently.Store.addNote({title: '<img src=x onerror=alert(1)>', tags: []})
  * =============================================================================
  */
 
 import * as Store from './store.js';
 import * as UI from './ui.js';
-
-/* ─────────────────────────── Boot ─────────────────────────── */
+import * as Security from './security.js';
 
 function boot() {
   try {
-    // 1. Data layer
     Store.init();
-
-    // 2. View layer
     UI.init();
 
-    // 3. Dev-mode helpers (DOAR pe localhost; nu expunem în producție)
     if (isDev()) {
-      window.__mently = { Store, UI };
+      window.__mently = { Store, UI, Security };
       console.info(
-        '%c[Mently]%c dev mode — încearcă:\n  __mently.Store.addNote({title:"Linear Algebra", content:"Eigenvalues...", tags:["math","linalg"]})',
+        '%c[Mently]%c dev mode\n' +
+        '  __mently.Store.addNote({title:"...", content:"...", tags:["..."]})\n' +
+        '  __mently.Security.escapeHtml(\'<script>xss</script>\')',
         'color:#fb923c;font-weight:bold',
         'color:inherit'
       );
@@ -49,10 +36,6 @@ function boot() {
 
 /* ─────────────────────────── Error handling ─────────────────────────── */
 
-/**
- * Programare defensivă (Cap. V): orice eroare neprinsă e capturată și logată,
- * iar utilizatorul primește feedback vizual în loc de o pagină goală/înghețată.
- */
 window.addEventListener('error', (e) => {
   console.error('[Mently] Uncaught error:', e.error ?? e.message);
 });
@@ -60,7 +43,6 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('[Mently] Unhandled promise rejection:', e.reason);
 });
 
-/** Pagina de fallback pentru erori fatale la boot. */
 function renderFatalError(err) {
   const msg = (err && err.message) ? err.message : 'Eroare necunoscută';
   document.body.innerHTML = `
@@ -77,10 +59,7 @@ function renderFatalError(err) {
   `;
 }
 
-/**
- * Mini-escape DOAR pentru pagina de eroare — nu folosim security.js (Pasul 4)
- * pentru a evita dependențe circulare în path-ul de fallback.
- */
+/** Mini-escape DOAR pentru fallback (evită dependență circulară). */
 function escapeForErrorView(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -90,16 +69,11 @@ function escapeForErrorView(str) {
     .replace(/'/g, '&#39;');
 }
 
-/* ─────────────────────────── Utilities ─────────────────────────── */
-
 function isDev() {
   const h = location.hostname;
-  return h === 'localhost' || h === '127.0.0.1' || h === '' /* file:// */;
+  return h === 'localhost' || h === '127.0.0.1' || h === '';
 }
 
-/* ─────────────────────────── Run ─────────────────────────── */
-
-// `type="module"` rulează deja deferred, dar verificăm pentru robustețe.
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot, { once: true });
 } else {

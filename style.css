@@ -41,6 +41,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Safety net: dacă Tailwind nu aplică text-paper-100 / bg-ink-950 din vreun motiv
+   (versiune CDN incorectă, CSP, network), CSS-ul de mai jos garantează că UI-ul
+   nu colapsează în default browser (alb pe alb / negru pe alb). */
+body {
+  color: var(--c-paper-100);
+  background-color: var(--c-ink-950);
+}
+
 /* ───────── 3. Background atmospheric ───────── */
 .bg-grain {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -62,6 +70,12 @@ html, body {
   }
   .mently-sidebar.is-open {
     transform: translateX(0);
+    /* CONTRAST MAXIM când drawer e deschis pe mobil:
+       eliminăm transparența și blur-ul (utile estetic pe desktop, dar reduc lizibilitatea pe mobil)
+       → text crisp, fără washed-out look. */
+    background-color: var(--c-ink-900) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
   }
   #drawer-backdrop.is-visible {

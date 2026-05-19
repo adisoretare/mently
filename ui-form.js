@@ -1,55 +1,52 @@
 /**
- * ui-form.js — Componenta de formular pentru adăugare notițe
+ * ui-form.js — Formular dual-mode (Add / Edit) + tag chips
  * =============================================================================
- * DECIZII ARHITECTURALE (Cap. III — Interacțiune):
+ * DECIZII ARHITECTURALE (Pasul "Edit Graph"):
  *
- * 1. STATEFUL COMPONENT
- *    Spre deosebire de listă (full re-render OK), formularul își păstrează DOM-ul.
- *    Motiv: utilizatorul tastează → re-render-ul ar pierde focus-ul/caret-ul.
- *    Listener-ii sunt atașați ÎN mount(); doar tag chips se re-randează intern.
+ * 1. DUAL-MODE prin SINGURĂ STATE VARIABLE: `editingId`
+ *    null → add mode; string → edit mode pentru nota cu acel id.
+ *    Beneficiu: o singură sursă de adevăr, fără flag-uri duplicate.
  *
- * 2. TAG CHIPS PATTERN
- *    Variantă strictă "doar Enter" (alegerea utilizatorului):
- *      - Enter → creează chip
- *      - Backspace pe input gol → șterge ultimul chip
- *      - Click pe × → șterge chip-ul respectiv
- *    Tag-urile sunt normalizate (lowercase, trim) și validate (regex strict).
+ * 2. STATIC TEMPLATE + DYNAMIC TEXT
+ *    Template-ul HTML e generat o singură dată în mount(). Schimbarea de mode
+ *    DOAR actualizează textContent al heading/button/cancel — NU re-randează
+ *    HTML-ul → focus și caret se păstrează intact.
  *
- * 3. VALIDARE CLIENT-SIDE
- *    Erorile sunt afișate INLINE (sub câmp) cu `role="alert"` → cititoarele de
- *    ecran le anunță automat. ARIA-describedby leagă input-ul de mesajul de eroare.
+ * 3. RESILIENCE LA DELETE EXTERN
+ *    Form se abonează la store. Dacă nota editată e ștearsă (clear all, sync
+ *    din alt tab), form iese silent din edit mode → fără null reference errors.
  *
- * 4. KEYBOARD-FIRST UX
- *    După submit reușit, focus revine la titlu → utilizator poate adăuga rapid
- *    multe notițe fără mouse (esențial pentru power-users și pentru jurați la demo).
- *
- * 5. PROGRESSIVE DISCLOSURE
- *    Hint-ul "Tag-urile comune devin muchii" e afișat sub câmpul de tags — explică
- *    "magia" aplicației exact unde se întâmplă, fără tutorial intruziv.
+ * 4. ESCAPE = CANCEL (în edit mode)
+ *    Standard UX: Esc anulează editarea curentă. Listener-ul verifică focus-ul
+ *    pentru a nu intra în conflict cu Esc-ul global (clear selection on canvas).
  * =============================================================================
  */
 
 import { t } from './i18n.js';
-import { addNote } from './store.js';
-import { announce, escapeHtml } from './dom.js';
+import { addNote, updateNote, getNoteById, subscribe } from './store.js';
+import { announce } from './dom.js';
+import {
+  escapeHtml,
+  sanitizeTag,
+  LIMITS,
+} from './security.js';
 
-const MAX_TAGS = 10;
-const MAX_TITLE = 200;
-const MAX_CONTENT = 10000;
+/* ─────────────────────────── State ─────────────────────────── */
 
-// Regex pentru tag valid: litere, cifre, cratimă, underscore. Lowercase la save.
-const TAG_REGEX = /^[a-z0-9\u00e0-\u017f][a-z0-9\u00e0-\u017f_-]*$/;
-
-/* Internal state — exists o singură instanță în aplicație. */
 let formEl = null;
 let titleInput = null;
 let contentInput = null;
 let tagInput = null;
 let tagWrapEl = null;
 let submitBtn = null;
+let cancelBtn = null;
+let formHeading = null;
 let formErrorEl = null;
 let titleErrorEl = null;
-let tags = []; // tag-uri introduse până la submit
+
+let tags = [];
+/** null = add mode; id string = edit mode pentru nota respectivă. */
+let editingId = null;
 
 /* ─────────────────────────── Mount ─────────────────────────── */
 
@@ -62,21 +59,89 @@ export function mount(container) {
   tagInput     = container.querySelector('#note-tag-input');
   tagWrapEl    = container.querySelector('#tag-chips-wrap');
   submitBtn    = container.querySelector('#note-submit');
+  cancelBtn    = container.querySelector('#note-cancel');
+  formHeading  = container.querySelector('#form-heading');
   formErrorEl  = container.querySelector('#form-error');
   titleErrorEl = container.querySelector('#title-error');
 
   attachListeners();
+
+  // Dacă nota editată dispare (clear all, delete extern), ieșim silent.
+  subscribe(() => {
+    if (editingId && !getNoteById(editingId)) {
+      exitEditMode({ silent: true });
+    }
+  });
+}
+
+/* ─────────────────────────── Public API ─────────────────────────── */
+
+/**
+ * Intră în edit mode pentru o notiță existentă.
+ * Populează câmpurile, schimbă heading-ul și submit-ul, dezvăluie Cancel.
+ */
+export function enterEditMode(noteId) {
+  const note = getNoteById(noteId);
+  if (!note) return false;
+
+  editingId = noteId;
+
+  // Populare câmpuri
+  titleInput.value = note.title;
+  contentInput.value = note.content || '';
+  tags = [...(note.tags || [])];
+  renderChips();
+
+  // UI mode switch
+  formHeading.textContent = `${t.form.headingEdit}: ${truncate(note.title, 28)}`;
+  submitBtn.textContent = t.form.submitEdit;
+  cancelBtn.classList.remove('hidden');
+  hideFormError();
+  hideFieldError(titleErrorEl, titleInput);
+
+  // Focus + select-all pentru editare rapidă
+  titleInput.focus();
+  titleInput.select();
+
+  // Scroll formularul în viewport (util pe mobil/sidebar scrollabil)
+  formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  announce(t.a11y.editingStart(note.title));
+  return true;
+}
+
+/** Ieși din edit mode → revine la add mode. */
+export function exitEditMode({ silent = false } = {}) {
+  if (!editingId) return;
+  editingId = null;
+
+  formEl.reset();
+  tags = [];
+  renderChips();
+
+  formHeading.textContent = t.form.headingAdd;
+  submitBtn.textContent = t.form.submitAdd;
+  cancelBtn.classList.add('hidden');
+  hideFormError();
+  hideFieldError(titleErrorEl, titleInput);
+
+  if (!silent) announce(t.a11y.editingCancel);
+}
+
+export function isEditing() {
+  return editingId !== null;
 }
 
 /* ─────────────────────────── Template ─────────────────────────── */
 
 function template() {
   return `
-    <h2 class="text-[11px] uppercase tracking-[0.18em] text-paper-500/80 mb-3">${escapeHtml(t.form.heading)}</h2>
+    <h2 id="form-heading" class="text-[11px] uppercase tracking-[0.18em] text-paper-500/80 mb-3">
+      ${escapeHtml(t.form.headingAdd)}
+    </h2>
 
-    <form id="note-form" novalidate class="space-y-3.5" aria-label="${escapeHtml(t.form.heading)}">
+    <form id="note-form" novalidate class="space-y-3.5" aria-labelledby="form-heading">
 
-      <!-- Title -->
       <div>
         <label for="note-title" class="block text-[11px] font-medium text-paper-300 mb-1.5">
           ${escapeHtml(t.form.titleLabel)}
@@ -87,7 +152,7 @@ function template() {
           id="note-title"
           name="title"
           type="text"
-          maxlength="${MAX_TITLE}"
+          maxlength="${LIMITS.TITLE_MAX_LENGTH}"
           required
           autocomplete="off"
           spellcheck="false"
@@ -100,7 +165,6 @@ function template() {
         <p id="title-error" class="hidden mt-1 text-xs text-red-400" role="alert"></p>
       </div>
 
-      <!-- Content -->
       <div>
         <label for="note-content" class="flex items-baseline justify-between text-[11px] font-medium text-paper-300 mb-1.5">
           <span>${escapeHtml(t.form.contentLabel)}</span>
@@ -110,13 +174,12 @@ function template() {
           id="note-content"
           name="content"
           rows="3"
-          maxlength="${MAX_CONTENT}"
+          maxlength="${LIMITS.CONTENT_MAX_LENGTH}"
           placeholder="${escapeHtml(t.form.contentPlaceholder)}"
           class="w-full bg-ink-950/60 border border-ink-800 rounded-md px-3 py-2 text-sm text-paper-100 placeholder-paper-500/40 focus:border-signal-400 outline-none transition-colors resize-none"
         ></textarea>
       </div>
 
-      <!-- Tags -->
       <div>
         <label for="note-tag-input" class="block text-[11px] font-medium text-paper-300 mb-1.5">
           ${escapeHtml(t.form.tagsLabel)}
@@ -132,6 +195,7 @@ function template() {
             type="text"
             autocomplete="off"
             spellcheck="false"
+            maxlength="${LIMITS.TAG_MAX_LENGTH}"
             placeholder="${escapeHtml(t.form.tagsPlaceholder)}"
             class="flex-1 min-w-[120px] bg-transparent border-0 outline-none text-sm text-paper-100 placeholder-paper-500/40 py-0.5 px-1"
             aria-describedby="tag-hint"
@@ -142,13 +206,23 @@ function template() {
 
       <p id="form-error" class="hidden text-xs text-red-400" role="alert"></p>
 
-      <button
-        id="note-submit"
-        type="submit"
-        class="w-full bg-signal-400 hover:bg-signal-300 active:bg-signal-500 text-ink-950 font-medium text-sm py-2.5 rounded-md transition-colors"
-      >
-        ${escapeHtml(t.form.submit)}
-      </button>
+      <!-- Butoanele de acțiune: Submit + Cancel (Cancel ascuns în add mode) -->
+      <div class="flex items-stretch gap-2">
+        <button
+          id="note-submit"
+          type="submit"
+          class="flex-1 bg-signal-400 hover:bg-signal-300 active:bg-signal-500 text-ink-950 font-medium text-sm py-2.5 rounded-md transition-colors"
+        >
+          ${escapeHtml(t.form.submitAdd)}
+        </button>
+        <button
+          id="note-cancel"
+          type="button"
+          class="hidden px-4 bg-ink-800 hover:bg-ink-700 text-paper-300 hover:text-paper-100 font-medium text-sm py-2.5 rounded-md transition-colors"
+        >
+          ${escapeHtml(t.form.cancel)}
+        </button>
+      </div>
     </form>
   `;
 }
@@ -159,10 +233,18 @@ function attachListeners() {
   tagInput.addEventListener('keydown', handleTagKeydown);
   tagWrapEl.addEventListener('click', handleTagWrapClick);
   formEl.addEventListener('submit', handleSubmit);
+  cancelBtn.addEventListener('click', () => exitEditMode());
 
-  // Live counter atribut maxlength previne deja, dar îi dăm feedback la depășire
   titleInput.addEventListener('input', () => {
     if (titleInput.value.length > 0) hideFieldError(titleErrorEl, titleInput);
+  });
+
+  // Esc în interiorul formularului → cancel edit (dar nu interferă cu Esc global pe canvas)
+  formEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && editingId) {
+      e.stopPropagation();
+      exitEditMode();
+    }
   });
 }
 
@@ -179,7 +261,6 @@ function handleTagKeydown(e) {
 }
 
 function handleTagWrapClick(e) {
-  // Click pe ×: ștergere chip
   const removeBtn = e.target.closest('[data-remove-chip]');
   if (removeBtn) {
     const idx = Number(removeBtn.dataset.removeChip);
@@ -190,45 +271,41 @@ function handleTagWrapClick(e) {
     }
     return;
   }
-  // Click pe spațiul gol: focus pe input (UX: zona toată e clickable)
   if (e.target === tagWrapEl) tagInput.focus();
 }
 
 function commitTag(raw) {
-  const tag = String(raw || '').trim().toLowerCase();
-  if (!tag) return;
-
-  if (!TAG_REGEX.test(tag)) {
-    showFormError(t.errors.invalidTag);
-    flashError(tagWrapEl);
+  const clean = sanitizeTag(raw);
+  if (!clean) {
+    if (String(raw).trim()) {
+      showFormError(t.errors.invalidTag);
+      flashError(tagWrapEl);
+    }
     return;
   }
-  if (tags.includes(tag)) {
+  if (tags.includes(clean)) {
     showFormError(t.errors.duplicateTag);
     flashError(tagWrapEl);
     return;
   }
-  if (tags.length >= MAX_TAGS) {
+  if (tags.length >= LIMITS.TAGS_MAX_COUNT) {
     showFormError(t.errors.tagsTooMany);
     return;
   }
 
-  tags.push(tag);
+  tags.push(clean);
   tagInput.value = '';
   hideFormError();
   renderChips();
 }
 
 function renderChips() {
-  // Ștergem chip-urile existente, păstrăm input-ul
   tagWrapEl.querySelectorAll('[data-chip]').forEach((c) => c.remove());
 
-  // Inserăm chip-urile noi înainte de input
   tags.forEach((tag, idx) => {
     const chip = document.createElement('span');
     chip.dataset.chip = idx;
     chip.className = 'inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-full bg-signal-400/15 text-signal-300 border border-signal-400/30';
-    // tag-ul e deja validat prin TAG_REGEX → safe, dar escape-uim oricum din principiu (defense-in-depth)
     chip.innerHTML = `
       <span>${escapeHtml(tag)}</span>
       <button
@@ -242,41 +319,41 @@ function renderChips() {
   });
 }
 
-/* ─────────────────────────── Submit ─────────────────────────── */
+/* ─────────────────────────── Submit (dual-mode) ─────────────────────────── */
 
 function handleSubmit(e) {
   e.preventDefault();
   hideFormError();
   hideFieldError(titleErrorEl, titleInput);
 
-  // UX forgiving: dacă utilizatorul a tastat un tag dar n-a apăsat Enter, îl commit-uim
   if (tagInput.value.trim()) commitTag(tagInput.value);
 
-  const title = titleInput.value.trim();
-  const content = contentInput.value.trim();
-
-  if (!title) {
-    showFieldError(titleErrorEl, titleInput, t.errors.titleRequired);
-    titleInput.focus();
-    return;
-  }
-  if (title.length > MAX_TITLE) {
-    showFieldError(titleErrorEl, titleInput, t.errors.titleTooLong);
-    titleInput.focus();
-    return;
-  }
-  if (content.length > MAX_CONTENT) {
-    showFormError(t.errors.contentTooLong);
-    contentInput.focus();
-    return;
-  }
+  const payload = {
+    title: titleInput.value,
+    content: contentInput.value,
+    tags: [...tags],
+  };
 
   try {
-    const note = addNote({ title, content, tags: [...tags] });
-    announce(t.a11y.noteAdded(note.title));
-    resetForm();
+    if (editingId) {
+      const note = updateNote(editingId, payload);
+      if (note) {
+        announce(t.a11y.noteUpdated(note.title));
+        exitEditMode({ silent: true });
+      }
+    } else {
+      const note = addNote(payload);
+      announce(t.a11y.noteAdded(note.title));
+      resetForm();
+    }
   } catch (err) {
-    showFormError(err.message || 'Eroare necunoscută.');
+    const msg = err.message || 'Eroare necunoscută.';
+    if (msg.includes('obligatoriu')) {
+      showFieldError(titleErrorEl, titleInput, t.errors.titleRequired);
+      titleInput.focus();
+    } else {
+      showFormError(msg);
+    }
   }
 }
 
@@ -284,7 +361,6 @@ function resetForm() {
   formEl.reset();
   tags = [];
   renderChips();
-  // Focus revine la titlu → power-users adaugă rapid succesiv
   titleInput.focus();
 }
 
@@ -294,26 +370,28 @@ function showFormError(msg) {
   formErrorEl.textContent = msg;
   formErrorEl.classList.remove('hidden');
 }
-
 function hideFormError() {
   formErrorEl.classList.add('hidden');
   formErrorEl.textContent = '';
 }
-
 function showFieldError(errEl, inputEl, msg) {
   errEl.textContent = msg;
   errEl.classList.remove('hidden');
   inputEl.setAttribute('aria-invalid', 'true');
 }
-
 function hideFieldError(errEl, inputEl) {
   errEl.classList.add('hidden');
   errEl.textContent = '';
   inputEl.setAttribute('aria-invalid', 'false');
 }
-
-/** Mic puls roșu pe border pentru feedback vizual la erori. */
 function flashError(el) {
   el.classList.add('border-red-500');
   setTimeout(() => el.classList.remove('border-red-500'), 500);
+}
+
+/* ─────────────────────────── Utility ─────────────────────────── */
+
+function truncate(str, maxLen) {
+  if (!str || str.length <= maxLen) return str || '';
+  return str.slice(0, maxLen - 1) + '…';
 }

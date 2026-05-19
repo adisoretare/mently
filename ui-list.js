@@ -1,28 +1,36 @@
 /**
- * ui-list.js — Lista de notițe (cards) + tag filtering
+ * ui-list.js — Lista de carduri + edit + delete + clear-all
  * =============================================================================
- * DECIZII ARHITECTURALE:
+ * DECIZII ARHITECTURALE (Pasul "Edit Graph"):
  *
- * 1. FULL RE-RENDER — lista nu conține input, deci re-render nu pierde focus.
- * 2. EVENT DELEGATION — un listener pe container.
- * 3. TAG FILTERING — click pe tag chip declanșează highlight pe canvas
- *    (canvas.js execută BFS pe componenta conexă).
- * 4. ACTIVE FILTER STATE vizual — tag-urile active se diferențiază; bara de
- *    filtru de sus permite anularea rapidă (X).
- * 5. ESCAPE LA TEMPLATE — title/content/tags vin de la user → ALL escape-d.
+ * 1. EDIT BUTTON pe fiecare card → ui-list.js NU edit-uiește direct;
+ *    emite un eveniment `onEdit(id)` pe care ui.js îl rutează către ui-form.js.
+ *    Beneficiu: list rămâne presentational, form rămâne stateful — separare clară.
+ *
+ * 2. CLEAR ALL cu CONFIRMARE 2-CLICK
+ *    Click 1: butonul intră în "armed" state (text roșu pulsant, copy schimbat).
+ *    Click 2 în <3s: confirmă și șterge.
+ *    Click în altă parte sau timeout: revine la default.
+ *    DE CE NU confirm() nativ: rupe estetica dark mode (dialog alb Chrome).
+ *    DE CE NU modal full: too much code, nu adaugă valoare la 2-click pattern.
  * =============================================================================
  */
 
 import { t } from './i18n.js';
-import { getNotes, deleteNote, getNoteById } from './store.js';
-import { announce, escapeHtml } from './dom.js';
+import { getNotes, deleteNote, clearAll, getNoteById } from './store.js';
+import { announce } from './dom.js';
+import { escapeHtml } from './security.js';
 
 let containerEl = null;
 let selectedId = null;
-let activeTag = null; // tag-ul curent folosit ca filtru (pentru highlight vizual)
+let activeTag = null;
+
+let clearAllArmed = false;
+let clearAllTimer = null;
 
 const selectListeners = new Set();
 const tagClickListeners = new Set();
+const editListeners = new Set();
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
@@ -39,15 +47,14 @@ export function render(notes) {
     containerEl.innerHTML = renderEmpty();
     selectedId = null;
     activeTag = null;
+    disarmClearAll();
     return;
   }
 
-  // Cleanup dacă selectedId a fost șters între timp
   if (selectedId && !notes.find((n) => n.id === selectedId)) {
     selectedId = null;
     notifySelect();
   }
-  // Cleanup dacă activeTag nu mai există în nicio notiță
   if (activeTag && !notes.some((n) => n.tags.includes(activeTag))) {
     activeTag = null;
     notifyTag(null);
@@ -66,6 +73,8 @@ export function render(notes) {
     <ul class="space-y-2" role="list">
       ${notes.map(renderCard).join('')}
     </ul>
+
+    ${renderClearAll()}
   `;
 }
 
@@ -73,23 +82,21 @@ export function onSelect(fn) {
   selectListeners.add(fn);
   return () => selectListeners.delete(fn);
 }
-
 export function onTagClick(fn) {
   tagClickListeners.add(fn);
   return () => tagClickListeners.delete(fn);
 }
-
-export function getSelectedId() {
-  return selectedId;
+export function onEdit(fn) {
+  editListeners.add(fn);
+  return () => editListeners.delete(fn);
 }
 
-/** Sync extern (apel din canvas.js când utilizatorul selectează în graf). */
+export function getSelectedId() { return selectedId; }
 export function setSelectedId(id) {
   if (selectedId === id) return;
   selectedId = id;
   render(getNotes());
 }
-
 export function setActiveTag(tag) {
   if (activeTag === tag) return;
   activeTag = tag;
@@ -142,13 +149,13 @@ function renderCard(note) {
     <li>
       <article
         data-note-id="${escapeHtml(note.id)}"
-        class="group relative bg-ink-900/70 border ${borderClass} rounded-md p-3 pr-9 cursor-pointer transition-colors focus-within:border-signal-400"
+        class="group relative bg-ink-900/70 border ${borderClass} rounded-md p-3 pr-3 cursor-pointer transition-colors focus-within:border-signal-400"
         tabindex="0"
         role="button"
         aria-pressed="${ariaSelected}"
         aria-label="${escapeHtml(t.list.selectLabel(note.title))}"
       >
-        <h3 class="text-sm font-medium text-paper-100 leading-snug">${escapeHtml(note.title)}</h3>
+        <h3 class="text-sm font-medium text-paper-100 leading-snug pr-14">${escapeHtml(note.title)}</h3>
 
         ${hasContent ? `
           <p class="mt-1 text-xs text-paper-500/90 leading-relaxed line-clamp-2">
@@ -162,17 +169,32 @@ function renderCard(note) {
           </ul>
         ` : ''}
 
-        <button
-          type="button"
-          data-action="delete"
-          data-note-id="${escapeHtml(note.id)}"
-          class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity text-paper-500 hover:text-red-400 focus-visible:text-red-400 p-1 rounded"
-          aria-label="${escapeHtml(t.list.deleteLabel(note.title))}"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
-          </svg>
-        </button>
+        <!-- Action icons row (edit + delete) -->
+        <div class="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <button
+            type="button"
+            data-action="edit"
+            data-note-id="${escapeHtml(note.id)}"
+            class="text-paper-500 hover:text-signal-300 focus-visible:text-signal-300 p-1 rounded"
+            aria-label="${escapeHtml(t.list.editLabel(note.title))}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+          </button>
+          <button
+            type="button"
+            data-action="delete"
+            data-note-id="${escapeHtml(note.id)}"
+            class="text-paper-500 hover:text-red-400 focus-visible:text-red-400 p-1 rounded"
+            aria-label="${escapeHtml(t.list.deleteLabel(note.title))}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
+            </svg>
+          </button>
+        </div>
       </article>
     </li>
   `;
@@ -197,6 +219,33 @@ function renderTagChip(tag) {
   `;
 }
 
+function renderClearAll() {
+  if (clearAllArmed) {
+    return `
+      <div class="mt-6 pt-4 border-t border-ink-800/40 text-center">
+        <button
+          type="button"
+          data-action="clear-all-confirm"
+          class="text-[11px] text-red-400 hover:text-red-300 font-medium underline underline-offset-2 animate-pulse"
+        >
+          ${escapeHtml(t.list.clearAllConfirm)}
+        </button>
+      </div>
+    `;
+  }
+  return `
+    <div class="mt-6 pt-4 border-t border-ink-800/40 text-center">
+      <button
+        type="button"
+        data-action="clear-all"
+        class="text-[10px] text-paper-500/70 hover:text-red-400 underline underline-offset-2 transition-colors"
+      >
+        ${escapeHtml(t.list.clearAll)}
+      </button>
+    </div>
+  `;
+}
+
 /* ─────────────────────────── Events ─────────────────────────── */
 
 function handleClick(e) {
@@ -206,6 +255,31 @@ function handleClick(e) {
     activeTag = null;
     notifyTag(null);
     render(getNotes());
+    return;
+  }
+
+  // Clear all (armed first click)
+  if (e.target.closest('[data-action="clear-all"]')) {
+    e.stopPropagation();
+    armClearAll();
+    return;
+  }
+
+  // Clear all (confirm second click)
+  if (e.target.closest('[data-action="clear-all-confirm"]')) {
+    e.stopPropagation();
+    disarmClearAll();
+    clearAll();
+    announce(t.a11y.clearAllDone);
+    return;
+  }
+
+  // Edit
+  const editBtn = e.target.closest('[data-action="edit"]');
+  if (editBtn) {
+    e.stopPropagation();
+    const id = editBtn.dataset.noteId;
+    if (getNoteById(id)) notifyEdit(id);
     return;
   }
 
@@ -221,12 +295,11 @@ function handleClick(e) {
     return;
   }
 
-  // Tag click → filter
+  // Tag filter
   const tagBtn = e.target.closest('[data-tag]');
   if (tagBtn) {
     e.stopPropagation();
     const tag = tagBtn.dataset.tag;
-    // Toggle: dacă e deja activ, dezactivează
     activeTag = activeTag === tag ? null : tag;
     notifyTag(activeTag);
     render(getNotes());
@@ -242,13 +315,37 @@ function handleClick(e) {
 }
 
 function handleKeydown(e) {
-  // Enter/Space pe card focusat = select
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const card = e.target.closest('[data-note-id]');
   if (!card || e.target !== card) return;
   e.preventDefault();
   toggleSelect(card.dataset.noteId);
 }
+
+/* ─────────────────────────── Clear All — armed/confirm pattern ─────────────────────────── */
+
+function armClearAll() {
+  clearAllArmed = true;
+  announce(t.a11y.clearAllArmed);
+  render(getNotes());
+  if (clearAllTimer) clearTimeout(clearAllTimer);
+  clearAllTimer = setTimeout(() => {
+    if (clearAllArmed) {
+      disarmClearAll();
+      render(getNotes());
+    }
+  }, 3000);
+}
+
+function disarmClearAll() {
+  clearAllArmed = false;
+  if (clearAllTimer) {
+    clearTimeout(clearAllTimer);
+    clearAllTimer = null;
+  }
+}
+
+/* ─────────────────────────── Selection helpers ─────────────────────────── */
 
 function toggleSelect(id) {
   selectedId = selectedId === id ? null : id;
@@ -265,9 +362,13 @@ function notifySelect() {
     try { fn(selectedId); } catch (err) { console.error('[ui-list] selectListener:', err); }
   }
 }
-
 function notifyTag(tag) {
   for (const fn of tagClickListeners) {
     try { fn(tag); } catch (err) { console.error('[ui-list] tagClickListener:', err); }
+  }
+}
+function notifyEdit(id) {
+  for (const fn of editListeners) {
+    try { fn(id); } catch (err) { console.error('[ui-list] editListener:', err); }
   }
 }

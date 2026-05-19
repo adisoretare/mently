@@ -71,6 +71,7 @@ export function open() {
   backdropEl?.classList.add('is-visible');
   sidebarEl.setAttribute('aria-hidden', 'false');
   openBtn?.setAttribute('aria-expanded', 'true');
+  openBtn?.classList.add('hidden'); // ascunde hamburger când drawer e deschis (fără buton fantomă)
   document.body.style.overflow = 'hidden'; // previne scroll background pe mobil
 
   announce(t.a11y.drawerOpened);
@@ -90,6 +91,7 @@ export function close() {
   backdropEl?.classList.remove('is-visible');
   sidebarEl.setAttribute('aria-hidden', 'true');
   openBtn?.setAttribute('aria-expanded', 'false');
+  openBtn?.classList.remove('hidden'); // restaurează hamburger
   document.body.style.overflow = '';
 
   announce(t.a11y.drawerClosed);
@@ -145,12 +147,14 @@ function syncToBreakpoint() {
     sidebarEl.classList.remove('is-open');
     backdropEl?.classList.remove('is-visible');
     sidebarEl.removeAttribute('aria-hidden');
+    openBtn?.classList.remove('hidden'); // md:hidden preia oricum pe desktop
     document.body.style.overflow = '';
     isOpen = false;
   } else {
     // Mobile: dacă nu e deschis explicit, marchează ca ascuns
     if (!isOpen) {
       sidebarEl.setAttribute('aria-hidden', 'true');
+      openBtn?.classList.remove('hidden'); // asigură hamburger vizibil
     }
   }
 }
