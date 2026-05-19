@@ -41,6 +41,7 @@ export function mount(container) {
 
   attachListeners();
   Voice.init(titleInput);
+  Voice.init(contentInput);
 
   // Dacă nota editată dispare (clear all, delete extern), ieșim silent.
   subscribe(() => {
@@ -120,20 +121,22 @@ function template() {
           <span class="text-signal-400" aria-hidden="true">*</span>
           <span class="sr-only">${escapeHtml(t.form.requiredHint)}</span>
         </label>
-        <input
-          id="note-title"
-          name="title"
-          type="text"
-          maxlength="${LIMITS.TITLE_MAX_LENGTH}"
-          required
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="${escapeHtml(t.form.titlePlaceholder)}"
-          class="mently-input w-full bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors"
-          aria-required="true"
-          aria-describedby="title-error"
-          aria-invalid="false"
-        />
+        <div class="flex items-center gap-2">
+          <input
+            id="note-title"
+            name="title"
+            type="text"
+            maxlength="${LIMITS.TITLE_MAX_LENGTH}"
+            required
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="${escapeHtml(t.form.titlePlaceholder)}"
+            class="mently-input flex-1 min-w-0 bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors"
+            aria-required="true"
+            aria-describedby="title-error"
+            aria-invalid="false"
+          />
+        </div>
         <p id="title-error" class="hidden mt-1 text-xs text-red-400" role="alert"></p>
       </div>
 
@@ -142,14 +145,16 @@ function template() {
           <span>${escapeHtml(t.form.contentLabel)}</span>
           <span class="text-paper-500/60 font-normal text-[10px]">${escapeHtml(t.form.optional)}</span>
         </label>
-        <textarea
-          id="note-content"
-          name="content"
-          rows="3"
-          maxlength="${LIMITS.CONTENT_MAX_LENGTH}"
-          placeholder="${escapeHtml(t.form.contentPlaceholder)}"
-          class="mently-input w-full bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors resize-none"
-        ></textarea>
+        <div class="flex items-start gap-2">
+          <textarea
+            id="note-content"
+            name="content"
+            rows="3"
+            maxlength="${LIMITS.CONTENT_MAX_LENGTH}"
+            placeholder="${escapeHtml(t.form.contentPlaceholder)}"
+            class="mently-input flex-1 min-w-0 bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors resize-none"
+          ></textarea>
+        </div>
       </div>
 
       <div>
