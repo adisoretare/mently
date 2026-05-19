@@ -112,6 +112,7 @@ const ro = {
     editLabel: 'Editează',
     deleteLabel: 'Șterge',
     deleteConfirmLabel: 'Confirmă ștergerea',
+    focusLabel: 'Focus',
     descriptionEmpty: 'Fără descriere.',
   },
 

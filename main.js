@@ -20,6 +20,7 @@
 import * as Store from './store.js';
 import * as UI from './ui.js';
 import * as Security from './security.js';
+import * as Focus from './focus.js';
 import { t } from './i18n.js';
 
 function boot() {
@@ -31,6 +32,9 @@ function boot() {
     Store.setMessages(t.errors);
 
     UI.init();
+
+    // Initialize Focus mode — must be after UI.init() so #canvas-wrapper exists
+    Focus.init(document.getElementById('canvas-wrapper'));
 
     // Callback-ul de storage errors e wired după UI.init() pentru că UI.announce
     // are nevoie de elementul aria-live montat de UI.

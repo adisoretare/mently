@@ -22,6 +22,7 @@ import * as Drawer from './ui-drawer.js';
 import * as Canvas from './canvas.js';
 import * as NodePanel from './ui-node-panel.js';
 import * as Tasks from './ui-tasks.js';
+import * as Focus from './focus.js';
 
 let sidebarEl = null;
 let canvasEl = null;
@@ -81,6 +82,7 @@ export function init() {
 
   NodePanel.mount(document.getElementById('canvas-wrapper'), {
     getScreenPos: Canvas.getNodeScreenPosition,
+    onFocus: (id) => Focus.start(id),
     onEdit: (id) => {
       Form.enterEditMode(id);
       Canvas.setSelected(id);
