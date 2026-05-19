@@ -36,6 +36,7 @@ export function mount(rootEl, { onSelect, onEdit } = {}) {
   onEditCb   = typeof onEdit   === 'function' ? onEdit   : null;
 
   containerEl.addEventListener('click', handleClick);
+  containerEl.addEventListener('keydown', handleKeydown);
 }
 
 export function render(notes) {
@@ -138,8 +139,21 @@ function handleClick(e) {
   if (card) {
     const id = card.dataset.noteId;
     selectedId = selectedId === id ? null : id;
-    render(getNotes());
     if (onSelectCb) onSelectCb(selectedId);
+    render(getNotes());
     return;
   }
+}
+
+/* ─────────────────────────── Keyboard handling (delegated) ─────────────────────────── */
+
+function handleKeydown(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const card = e.target.closest('[data-note-id]');
+  if (!card || e.target !== card) return;
+  e.preventDefault();
+  const id = card.dataset.noteId;
+  selectedId = selectedId === id ? null : id;
+  if (onSelectCb) onSelectCb(selectedId);
+  render(getNotes());
 }
