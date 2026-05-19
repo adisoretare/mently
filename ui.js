@@ -11,7 +11,7 @@
  * =============================================================================
  */
 
-import { subscribe, getNotes, getNoteById } from './store.js';
+import { subscribe, getNotes, getNoteById, updateNote } from './store.js';
 import { buildGraphModel } from './graph.js';
 import { setAriaLive, announce } from './dom.js';
 import { escapeHtml } from './security.js';
@@ -20,11 +20,14 @@ import * as Form from './ui-form.js';
 import * as List from './ui-list.js';
 import * as Drawer from './ui-drawer.js';
 import * as Canvas from './canvas.js';
+import * as NodePanel from './ui-node-panel.js';
+import * as Tasks from './ui-tasks.js';
 
 let sidebarEl = null;
 let canvasEl = null;
 let placeholderEl = null;
 let statsEl = null;
+let cachedModel = null;
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
@@ -56,13 +59,52 @@ export function init() {
 
   Form.mount(sidebarEl.querySelector('#form-section'));
   List.mount(sidebarEl.querySelector('#list-section'));
+  Tasks.mount(sidebarEl.querySelector('#tasks-section'), {
+    onSelect: (id) => {
+      Canvas.setSelected(id);
+      id ? NodePanel.show(id) : NodePanel.hide();
+      if (id) {
+        const note = getNoteById(id);
+        if (note) announce(t.a11y.nodeSelected(note.title));
+      }
+    },
+    onEdit: (id) => {
+      Form.enterEditMode(id);
+      Canvas.setSelected(id);
+      List.setSelectedId(id);
+      Tasks.setSelectedId(id);
+    },
+  });
   statsEl = sidebarEl.querySelector('#stats-section');
   Drawer.init();
   Canvas.init(canvasEl);
 
+  NodePanel.mount(document.getElementById('canvas-wrapper'), {
+    getScreenPos: Canvas.getNodeScreenPosition,
+    onEdit: (id) => {
+      Form.enterEditMode(id);
+      Canvas.setSelected(id);
+      List.setSelectedId(id);
+    },
+    onSetSun: (id) => {
+      if (!cachedModel) return;
+      const compIdx = cachedModel.componentIndexById.get(id);
+      if (compIdx === undefined) return;
+      const comp = cachedModel.components[compIdx];
+      for (const note of getNotes()) {
+        if (note.isSun && comp.has(note.id) && note.id !== id) {
+          updateNote(note.id, { isSun: false });
+        }
+      }
+      updateNote(id, { isSun: true });
+    },
+  });
+
   // ─── Selection sync sidebar ↔ canvas ───
   List.onSelect((id) => {
     Canvas.setSelected(id);
+    Tasks.setSelectedId(id);
+    id ? NodePanel.show(id) : NodePanel.hide();
     if (id) {
       const note = getNoteById(id);
       if (note) announce(t.a11y.nodeSelected(note.title));
@@ -72,6 +114,8 @@ export function init() {
     // Canvas are responsabilitatea anunțurilor pentru evenimentele de pe canvas
     // (sunPromoted / sunReset). ui.js anunță doar pentru selecțiile din sidebar.
     List.setSelectedId(id);
+    Tasks.setSelectedId(id);
+    id ? NodePanel.show(id) : NodePanel.hide();
   });
 
   // ─── Tag click sidebar → highlight componentă ───
@@ -84,6 +128,7 @@ export function init() {
     Form.enterEditMode(id);
     Canvas.setSelected(id);
     List.setSelectedId(id);
+    Tasks.setSelectedId(id);
   });
 
   subscribe(handleStateChange);
@@ -124,6 +169,7 @@ function renderSidebarShell() {
       <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="${escapeHtml(t.a11y.statsRegion)}"></div>
 
       <div class="flex-1 overflow-y-auto mently-scroll px-7 pb-8 space-y-6">
+        <section id="tasks-section" aria-labelledby="tasks-heading"></section>
         <section id="form-section" aria-label="${escapeHtml(t.a11y.formRegion)}"></section>
         <section id="list-section" aria-label="${escapeHtml(t.list.heading)}"></section>
       </div>
@@ -136,6 +182,7 @@ function renderSidebarShell() {
 function handleStateChange() {
   const notes = getNotes();
   const model = buildGraphModel(notes);
+  cachedModel = model;
 
   if (statsEl) {
     statsEl.innerHTML = `
@@ -149,6 +196,7 @@ function handleStateChange() {
   }
 
   List.render(notes);
+  Tasks.render(notes);
 
   if (placeholderEl) {
     placeholderEl.style.opacity = notes.length === 0 ? '1' : '0';
