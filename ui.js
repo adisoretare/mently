@@ -63,6 +63,8 @@ export function init() {
   Tasks.mount(sidebarEl.querySelector('#tasks-section'), {
     onSelect: (id) => {
       Canvas.setSelected(id);
+      List.setSelectedId(id);
+      Tasks.setSelectedId(id);
       id ? NodePanel.show(id) : NodePanel.hide();
       if (id) {
         const note = getNoteById(id);

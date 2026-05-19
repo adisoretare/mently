@@ -1118,6 +1118,7 @@ function handlePointerUp(e) {
 /* ─────────────────────────── Keyboard ─────────────────────────── */
 
 function handleKeydown(e) {
+  if (spotlightId !== null) return;
   if (e.key === 'Escape') {
     if (selectedId || activeTag) {
       const hadSelection = !!selectedId;
