@@ -2,15 +2,15 @@
    style.css — Stiluri custom care depășesc utilitarele Tailwind
    -----------------------------------------------------------------------------
    DECIZIE: Tailwind acoperă 95% din nevoi prin utility classes; păstrăm aici doar:
-     1. Design tokens globali (CSS variables) — sursă unică de adevăr pentru tema.
+     1. Design tokens globali (CSS variables) — sursă unică de adevăr.
      2. Texturi/efecte greu de exprimat în utility classes (grain, vignette).
-     3. Optimizări canvas (rendering crisp, cursor states).
-     4. Accesibilitate (focus rings, reduced motion, scrollbar custom).
+     3. Comportament drawer mobile (translateX, focus states).
+     4. Optimizări canvas (rendering crisp, cursor states).
+     5. Accesibilitate (focus rings, skip link, reduced motion, scrollbar).
    ========================================================================== */
 
-/* ---------- 1. Design Tokens (CSS Custom Properties) ---------- */
+/* ───────── 1. Design Tokens (CSS Custom Properties) ───────── */
 :root {
-  /* Paleta brand — sincron cu tailwind.config */
   --c-ink-950: #0c0a09;
   --c-ink-900: #1c1917;
   --c-ink-800: #292524;
@@ -22,52 +22,64 @@
   --c-signal-300: #fdba74;
   --c-signal-500: #f97316;
 
-  /* Curbe de animație (semantic, nu generic) */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-snap: cubic-bezier(0.65, 0, 0.35, 1);
 
-  /* Densitate */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+
+  --mobile-breakpoint: 768px;
 }
 
-/* ---------- 2. Base ---------- */
+/* ───────── 2. Base ───────── */
 html, body {
   height: 100%;
   margin: 0;
-  font-feature-settings: "ss01", "cv11"; /* alternative stilistice Geist */
+  font-feature-settings: "ss01", "cv11";
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---------- 3. Background atmospheric (Cap. III — eleganță estetică) ----------
-   Granulația și vignette-ul evită aspectul "AI generic flat dark mode".
-   Granulația e un SVG inline ca data URI → 0 request HTTP suplimentar. */
+/* ───────── 3. Background atmospheric ───────── */
 .bg-grain {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
 }
-
 .bg-vignette {
-  background: radial-gradient(
-    ellipse at center,
-    transparent 0%,
-    transparent 55%,
-    rgba(0, 0, 0, 0.35) 100%
-  );
+  background: radial-gradient(ellipse at center, transparent 0%, transparent 55%, rgba(0,0,0,0.35) 100%);
 }
 
-/* ---------- 4. Canvas — randare crisp pe display-uri high-DPI ---------- */
+/* ───────── 4. Drawer mobile behavior ─────────
+   Pe mobil (< 768px): sidebar e off-screen by default; .is-open îl aduce în viewport.
+   Pe desktop (≥ 768px): NU aplicăm transform deloc — sidebar e static în flex row.
+*/
+@media (max-width: 767px) {
+  .mently-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.32s var(--ease-out-soft);
+    will-change: transform;
+  }
+  .mently-sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.5);
+  }
+  #drawer-backdrop.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ───────── 5. Canvas — randare crisp ───────── */
 #graph-canvas {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
   cursor: grab;
-  touch-action: none; /* dezactivăm gesturile native browser pentru drag pe touch */
+  touch-action: none;
 }
 #graph-canvas:active { cursor: grabbing; }
 
-/* ---------- 5. Scrollbar custom — consistent cu paleta dark ---------- */
+/* ───────── 6. Scrollbar custom ───────── */
 .mently-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--c-ink-700) transparent;
@@ -80,8 +92,10 @@ html, body {
 }
 .mently-scroll::-webkit-scrollbar-thumb:hover { background: var(--c-ink-700); }
 
-/* ---------- 6. Accesibilitate — focus ring (Cap. III) ----------
-   :focus-visible only → tastatura primește ring, mouse-ul nu (nu deranjează vizual). */
+/* ───────── 7. Focus management ─────────
+   :focus-visible doar pentru navigarea cu tastatura → mouse-ul nu primește ring.
+   Critic pentru aspectul curat al UI-ului fără a sacrifica accesibilitatea.
+*/
 :focus { outline: none; }
 :focus-visible {
   outline: 2px solid var(--c-signal-400);
@@ -89,13 +103,48 @@ html, body {
   border-radius: var(--radius-sm);
 }
 
-/* ---------- 7. Screen-reader-only utility (în caz că Tailwind nu se încarcă) ---------- */
+/* ───────── 8. Skip link (WCAG 2.4.1 — Bypass Blocks) ─────────
+   Invizibil până când primește focus prin Tab → primul element focusabil.
+   Permite utilizatorilor cu tastatura să sară peste sidebar direct la graf.
+*/
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 100;
+  background: var(--c-signal-400);
+  color: var(--c-ink-950);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: top 0.2s var(--ease-out-soft);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 12px;
+  outline: none;
+}
+
+/* ───────── 9. Line clamp utility ─────────
+   line-clamp e suportat în Tailwind ≥3, dar îl declarăm explicit pentru robustețe
+   (CDN-ul poate avea versiuni variate).
+*/
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───────── 10. Screen-reader only ───────── */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
-/* ---------- 8. Prefers-reduced-motion (accesibilitate WCAG 2.3.3) ---------- */
+/* ───────── 11. Reduced motion (WCAG 2.3.3) ───────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -105,7 +154,7 @@ html, body {
   }
 }
 
-/* ---------- 9. Animație de boot (subtilă, semnal de "viu") ---------- */
+/* ───────── 12. Boot animation ───────── */
 @keyframes mently-fade-up {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }

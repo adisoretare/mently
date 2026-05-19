@@ -12,12 +12,10 @@
 
   <!--
     DECIZIE ARHITECTURALĂ (Cap. I — Inginerie web):
-    Folosim Tailwind CDN pentru viteza de dezvoltare în cele <12h ale concursului.
-    Într-un build de producție am folosi PostCSS + JIT pentru tree-shaking (CSS final ~5KB în loc de ~3MB CDN).
-    Configurăm tema înainte de a încărca scriptul pentru a expune designul tokens în clasele utilitare.
+    Tailwind CDN pentru viteza de dezvoltare. Producția → PostCSS + JIT.
+    Configurăm tema brand ÎNAINTE de a încărca scriptul.
   -->
   <script>
-    // Tema Tailwind extinsă cu paleta brandului Mently
     window.tailwind = window.tailwind || {};
     window.tailwind.config = {
       darkMode: 'class',
@@ -39,7 +37,6 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Tipografie distinctivă: Instrument Serif (display, italic) + Geist (sans) + Geist Mono (date) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -51,47 +48,81 @@
 </head>
 <body class="font-sans bg-ink-950 text-paper-100 antialiased overflow-hidden">
 
-  <!--
-    SHELL APLICAȚIE
-    - <aside> = formular notițe (Pasul 2)
-    - <main>  = canvas (Pasul 3)
-    Rolurile ARIA și atributele lang sunt declarate de la început pentru accesibilitate (Cap. III).
-  -->
-  <div id="app" class="h-[100dvh] w-screen flex flex-col md:flex-row" role="application" aria-label="Mently — visual knowledge graph">
+  <!-- Skip link (accesibilitate WCAG 2.4.1) — vizibil doar la focus prin Tab -->
+  <a href="#canvas-wrapper" class="skip-link">Sari la graf</a>
 
-    <!-- Sidebar: 30% pe desktop, full-width pe mobil. Conținutul e injectat de ui.js -->
+  <!--
+    LAYOUT
+    Desktop ≥768px: sidebar + canvas în flex row (sidebar fix-width, canvas flex-1).
+    Mobile <768px:  canvas full-screen; sidebar = drawer fix poziționat off-screen,
+                    deschis prin butonul hamburger.
+  -->
+  <div id="app" class="h-[100dvh] w-screen relative md:flex overflow-hidden" role="application" aria-label="Mently — visual knowledge graph">
+
+    <!-- Hamburger button (mobile only) -->
+    <button
+      id="drawer-open"
+      type="button"
+      class="md:hidden fixed top-3 left-3 z-40 bg-ink-900/90 backdrop-blur-md border border-ink-800 rounded-md p-2 text-paper-100 hover:text-signal-400 transition-colors shadow-lg shadow-black/40"
+      aria-label="Deschide panoul de editare"
+      aria-controls="sidebar"
+      aria-expanded="false"
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="3" y1="6"  x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+
+    <!-- Backdrop (mobile only, visible doar când drawer e deschis) -->
+    <div
+      id="drawer-backdrop"
+      class="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm md:hidden opacity-0 pointer-events-none transition-opacity duration-300"
+      aria-hidden="true"
+    ></div>
+
+    <!--
+      SIDEBAR
+      - Desktop: relative, parte din flex-row layout
+      - Mobile:  fixed, translateX(-100%) by default; .is-open îl aduce în vizualizare
+    -->
     <aside
       id="sidebar"
-      class="w-full md:w-[clamp(320px,30vw,460px)] md:h-full h-[40dvh] md:border-r border-b md:border-b-0 border-ink-800 bg-ink-900/60 backdrop-blur-sm flex-shrink-0 overflow-hidden"
+      class="mently-sidebar fixed md:relative md:flex-shrink-0 inset-y-0 left-0 z-40 w-[88vw] max-w-[400px] md:w-[clamp(320px,30vw,460px)] md:max-w-none bg-ink-900/95 md:bg-ink-900/60 backdrop-blur-md border-r border-ink-800 overflow-hidden"
       aria-label="Editor de notițe"
-    ></aside>
+      aria-hidden="true"
+    >
+      <!-- Conținut injectat de ui.js -->
+    </aside>
 
-    <!-- Canvas wrapper: 70% pe desktop. Canvas HTML5 va fi randat aici (Pasul 3). -->
-    <main id="canvas-wrapper" class="flex-1 relative bg-ink-950" aria-label="Vizualizarea grafului de cunoștințe">
+    <!-- Canvas / Main -->
+    <main
+      id="canvas-wrapper"
+      class="absolute inset-0 md:relative md:flex-1 md:inset-auto md:h-full bg-ink-950"
+      aria-label="Vizualizarea grafului de cunoștințe"
+      tabindex="-1"
+    >
       <canvas id="graph-canvas" class="absolute inset-0 w-full h-full" aria-hidden="true"></canvas>
 
-      <!-- Texturi de fundal (atmosferă, nu doar culoare plată) -->
+      <!-- Texturi de fundal -->
       <div class="pointer-events-none absolute inset-0 bg-grain opacity-[0.04]"></div>
       <div class="pointer-events-none absolute inset-0 bg-vignette"></div>
 
-      <!-- Placeholder vizibil cât timp graful e gol (eliminat în Pasul 3) -->
+      <!-- Placeholder canvas (eliminat când există notițe) -->
       <div id="canvas-placeholder" class="absolute inset-0 flex items-center justify-center text-center px-6 pointer-events-none">
         <div class="max-w-md">
           <p class="font-display italic text-5xl text-paper-300/40 leading-tight">A blank<br/>constellation.</p>
-          <p class="mt-4 text-sm text-paper-500/60">Adaugă o notiță în sidebar — graful se construiește din tag-urile comune.</p>
+          <p class="mt-4 text-sm text-paper-500/60">Adaugă o notiță în panou — graful se construiește din tag-urile comune.</p>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- ARIA live region pentru screen-reader announcements (Cap. III — accesibilitate) -->
+  <!-- ARIA live region pentru screen-reader announcements -->
   <div id="aria-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!--
-    ENTRY POINT
-    type="module" → ES6 modules, import/export native, ordine deferred by default.
-    Beneficii arhitecturale: graf explicit de dependențe, strict mode automat, scope izolat.
-  -->
+  <!-- Entry point -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>

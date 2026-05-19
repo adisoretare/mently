@@ -1,207 +1,153 @@
 /**
- * ui.js — Strat de prezentare (View layer)
+ * ui.js — Orchestrator UI (Composition layer)
  * =============================================================================
- * DECIZII ARHITECTURALE (Cap. I — Modularitate, Cap. III — Interacțiune):
+ * Compune componentele: Form, List, Drawer, Canvas + secțiunea de stats.
+ * Wire-uiește selecția bidirecțional (card ↔ nod) și tag filtering (card → graf).
  *
- * 1. SEPARARE STRICTĂ store ↔ DOM
- *    ui.js NU mutează direct starea — doar consumă (subscribe) și emite intenții
- *    către store prin API-ul său public. Data flow unidirecțional, ca în Flux/Redux.
- *
- * 2. RENDERING DECLARATIV (mini-React fără React)
- *    render() recalculează DOM-ul din starea curentă. Simplitate maximă, zero
- *    diff-uri manuale. Pentru sidebar (puține elemente) e suficient; pentru
- *    Canvas (Pasul 3) ieșim din paradigma DOM și folosim retained-mode.
- *
- * 3. PROGRESSIVE ENHANCEMENT
- *    Pasul 1 = scheletul. Pasul 2 = formular. Pasul 3 = canvas. Pasul 5 = export/import.
- *    Fiecare iterație adaugă, nu rescrie.
- *
- * 4. ACCESIBILITATE BY-DEFAULT
- *    Folosim anunțuri pentru screen-readers via aria-live, focus management,
- *    contrast verificat (Cap. III — accesibilitate).
+ * PATTERN: Mediator. ui.js cunoaște List și Canvas; ele NU se cunosc între ele.
+ * Avantaj: poți schimba renderer-ul (Canvas → SVG → WebGL) fără să atingi List.
  * =============================================================================
  */
 
-import { subscribe, getNotes } from './store.js';
+import { subscribe, getNotes, getNoteById } from './store.js';
 import { buildGraphModel } from './graph.js';
+import { setAriaLive, announce, escapeHtml } from './dom.js';
+import { t } from './i18n.js';
+import * as Form from './ui-form.js';
+import * as List from './ui-list.js';
+import * as Drawer from './ui-drawer.js';
+import * as Canvas from './canvas.js';
 
-/** Cache referințe DOM — interogările querySelector sunt scumpe în loop. */
 let sidebarEl = null;
 let canvasEl = null;
 let placeholderEl = null;
-let ariaLiveEl = null;
+let statsEl = null;
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
-/**
- * Bootstrap UI. Apelat o singură dată din main.js DUPĂ store.init().
- */
 export function init() {
   sidebarEl     = document.getElementById('sidebar');
   canvasEl      = document.getElementById('graph-canvas');
   placeholderEl = document.getElementById('canvas-placeholder');
-  ariaLiveEl    = document.getElementById('aria-live');
+
+  const ariaLive = document.getElementById('aria-live');
+  setAriaLive(ariaLive);
 
   if (!sidebarEl || !canvasEl) {
     console.error('[ui] Elemente DOM lipsă — verifică index.html');
     return;
   }
 
-  // Re-render la fiecare modificare a store-ului
-  subscribe(render);
+  // 1. Schelet sidebar (fără footer, la cererea utilizatorului)
+  sidebarEl.innerHTML = renderSidebarShell();
 
-  // Render inițial
-  render();
+  // 2. Mount componente sidebar
+  Form.mount(sidebarEl.querySelector('#form-section'));
+  List.mount(sidebarEl.querySelector('#list-section'));
+  statsEl = sidebarEl.querySelector('#stats-section');
+  Drawer.init();
 
-  // Resize handler — Canvas trebuie sincronizat la viewport (Pasul 3).
-  // Passive listener → nu blochează scroll-ul.
-  window.addEventListener('resize', handleResize, { passive: true });
-  handleResize();
+  // 3. Inițializează renderer-ul Canvas
+  Canvas.init(canvasEl);
+
+  // 4. WIRE bidirectional selection (mediator pattern)
+  //    sidebar click → graf highlights nodul + scroll-in-view (mental)
+  List.onSelect((id) => {
+    Canvas.setSelected(id);
+    if (id) {
+      const note = getNoteById(id);
+      if (note) announce(t.a11y.nodeSelected(note.title));
+    }
+  });
+  //    graf click → sidebar evidențiază cardul
+  Canvas.onSelect((id) => {
+    List.setSelectedId(id);
+    if (!id) announce(t.a11y.selectionCleared);
+  });
+
+  // 5. Tag click în sidebar → highlight componentă conexă în graf
+  List.onTagClick((tag) => {
+    Canvas.highlightByTag(tag);
+  });
+
+  // 6. Reactivitate la modificări de store
+  subscribe(handleStateChange);
+  handleStateChange();
 }
 
-/**
- * Anunță un mesaj către cititoarele de ecran. Util la acțiuni utilizator
- * (notiță adăugată, șters, etc.) — Cap. III, accesibilitate.
- */
-export function announce(message) {
-  if (!ariaLiveEl) return;
-  ariaLiveEl.textContent = '';
-  // setTimeout 0 forțează NVDA/JAWS să re-citească chiar și mesaje identice consecutive.
-  setTimeout(() => { ariaLiveEl.textContent = String(message); }, 50);
+export { announce };
+
+/* ─────────────────────────── Sidebar shell ─────────────────────────── */
+
+function renderSidebarShell() {
+  return `
+    <div class="h-full flex flex-col animate-fade-up">
+
+      <!-- Brand header + close button (mobile) -->
+      <header class="flex items-start justify-between px-7 pt-8 pb-5 flex-shrink-0">
+        <div>
+          <h1 class="font-display italic text-5xl leading-none tracking-tight">
+            ${escapeHtml(t.brand)}<span class="text-signal-400">.</span>
+          </h1>
+          <p class="mt-2 text-[10px] uppercase tracking-[0.22em] text-paper-500/80">
+            ${escapeHtml(t.tagline)}
+          </p>
+        </div>
+        <button
+          id="drawer-close"
+          type="button"
+          class="md:hidden p-1.5 -mt-1 -mr-1 text-paper-500 hover:text-paper-100 rounded transition-colors"
+          aria-label="${escapeHtml(t.drawer.close)}"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Stats strip -->
+      <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="Statistici graf"></div>
+
+      <!-- Scrollable: form + list -->
+      <div class="flex-1 overflow-y-auto mently-scroll px-7 pb-8 space-y-6">
+        <section id="form-section" aria-label="${escapeHtml(t.form.heading)}"></section>
+        <section id="list-section" aria-label="${escapeHtml(t.list.heading)}"></section>
+      </div>
+    </div>
+  `;
 }
 
-/* ─────────────────────────── Render ─────────────────────────── */
+/* ─────────────────────────── Reactivity ─────────────────────────── */
 
-/**
- * Render principal. În Pasul 1: dashboard minimal cu metrici din store + graf.
- * Pasul 2 va înlocui acest conținut cu formular + listă de notițe.
- */
-function render() {
+function handleStateChange() {
   const notes = getNotes();
   const model = buildGraphModel(notes);
 
-  // Vizibilitatea placeholder-ului din canvas — ascundere când există notițe
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <div class="grid grid-cols-4 gap-1.5">
+        ${statCard('Notes', notes.length)}
+        ${statCard('Edges', model.edges.length)}
+        ${statCard('Tags', model.tagFrequency.length)}
+        ${statCard('Cmps', model.components.length)}
+      </div>
+    `;
+  }
+
+  List.render(notes);
+
+  // Placeholder fade când există noduri
   if (placeholderEl) {
     placeholderEl.style.opacity = notes.length === 0 ? '1' : '0';
-    placeholderEl.style.transition = 'opacity 0.4s var(--ease-out-soft)';
-  }
-
-  sidebarEl.innerHTML = renderSidebarShell({
-    notesCount:     notes.length,
-    edgesCount:     model.edges.length,
-    tagsCount:      model.tagFrequency.length,
-    componentsCount: model.components.length,
-    topTags:        model.tagFrequency.slice(0, 5),
-  });
-
-  // Pentru juriu / debugging: expunem modelul în consolă la fiecare render
-  if (typeof window !== 'undefined') {
-    console.debug('[ui] Graph model:', model);
+    placeholderEl.style.transition = 'opacity 0.5s var(--ease-out-soft)';
   }
 }
 
-/* ─────────────────────────── Sidebar templates ─────────────────────────── */
-
-/**
- * Template-ul sidebar-ului pentru Pasul 1.
- * NB: text-ul `notesCount` etc. sunt valori numerice/derivate, nu input
- * de la utilizator → safe să fie injectate ca text. Tag-urile (user-generated)
- * vor fi escape-uite în Pasul 4 (security.js); aici încă nu există input UI.
- */
-function renderSidebarShell({ notesCount, edgesCount, tagsCount, componentsCount, topTags }) {
-  const empty = notesCount === 0;
-
-  return `
-    <div class="h-full overflow-y-auto mently-scroll px-7 py-8 flex flex-col gap-8 animate-fade-up">
-
-      <!-- Brand -->
-      <header>
-        <h1 class="font-display italic text-5xl leading-none tracking-tight">
-          Mently<span class="text-signal-400">.</span>
-        </h1>
-        <p class="mt-2 text-[11px] uppercase tracking-[0.2em] text-paper-500/80">
-          Visual&nbsp;Knowledge&nbsp;Graph
-        </p>
-      </header>
-
-      <!-- Stat strip — metricile derivate din store + graph -->
-      <section aria-label="Statistici graf" class="grid grid-cols-2 gap-3">
-        ${statCard('Notes',       notesCount)}
-        ${statCard('Edges',       edgesCount)}
-        ${statCard('Tags',        tagsCount)}
-        ${statCard('Components',  componentsCount)}
-      </section>
-
-      ${empty ? renderEmptyState() : renderTopTags(topTags)}
-
-      <!-- Footer / step indicator -->
-      <footer class="mt-auto pt-6 border-t border-ink-800">
-        <p class="text-[10px] font-mono uppercase tracking-widest text-paper-500/60">
-          step 01 / data layer ready
-        </p>
-        <p class="mt-2 text-xs text-paper-500/80 leading-relaxed">
-          Pașii următori adaugă: formular notițe, force-directed canvas, securizare XSS, export/import JSON.
-        </p>
-      </footer>
-    </div>
-  `;
-}
-
-/** Card de metrică numerică, stil editorial. */
 function statCard(label, value) {
   return `
-    <div class="bg-ink-900/80 border border-ink-800 rounded-md px-4 py-3">
-      <div class="text-[10px] uppercase tracking-[0.18em] text-paper-500/70">${label}</div>
-      <div class="font-mono text-2xl text-paper-100 mt-1 tabular-nums">${value}</div>
+    <div class="bg-ink-900/70 border border-ink-800 rounded-md px-2 py-2 text-center">
+      <div class="text-[9px] uppercase tracking-[0.12em] text-paper-500/70">${escapeHtml(label)}</div>
+      <div class="font-mono text-base text-paper-100 mt-0.5 tabular-nums">${value}</div>
     </div>
   `;
-}
-
-function renderEmptyState() {
-  return `
-    <section aria-label="Niciun nod" class="bg-ink-900/40 border border-dashed border-ink-800 rounded-md p-5">
-      <p class="font-display italic text-2xl text-paper-300 leading-snug">
-        Empty mind, full potential.
-      </p>
-      <p class="mt-2 text-sm text-paper-500/90 leading-relaxed">
-        Nu există încă notițe. Formularul de adăugare vine în Pasul 2; deocamdată poți folosi
-        <code class="font-mono text-signal-400 text-xs">__mently.Store.addNote({...})</code> în consolă.
-      </p>
-    </section>
-  `;
-}
-
-/** Lista celor mai frecvente tag-uri — apare doar dacă există date. */
-function renderTopTags(topTags) {
-  if (!topTags.length) return '';
-  return `
-    <section aria-label="Cele mai folosite tag-uri">
-      <h2 class="text-[11px] uppercase tracking-[0.2em] text-paper-500/80 mb-3">Top tags</h2>
-      <ul class="flex flex-wrap gap-2">
-        ${topTags.map((t) => `
-          <li class="text-xs font-mono px-2.5 py-1 rounded-full bg-ink-800 text-paper-300 border border-ink-700">
-            ${t.tag} <span class="text-paper-500/70 ml-1">${t.count}</span>
-          </li>
-        `).join('')}
-      </ul>
-    </section>
-  `;
-}
-
-/* ─────────────────────────── Canvas sizing ─────────────────────────── */
-
-/**
- * Sincronizează dimensiunile canvas-ului cu containerul (high-DPI aware).
- * Setăm `width`/`height` (pixel buffer) la dimensiunea reală × dpr,
- * iar CSS la dimensiunea logică → randare crisp pe Retina/4K (Cap. III).
- * Logica de draw vine în Pasul 3.
- */
-function handleResize() {
-  if (!canvasEl) return;
-  const rect = canvasEl.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  // Prevenim setarea unui buffer de 0 (poate apărea când containerul e ascuns)
-  if (rect.width === 0 || rect.height === 0) return;
-  canvasEl.width  = Math.round(rect.width * dpr);
-  canvasEl.height = Math.round(rect.height * dpr);
 }
