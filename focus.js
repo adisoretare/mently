@@ -103,8 +103,8 @@ export function isActive() { return active; }
 /* ─── Step computation ─── */
 
 function computeSteps(id, notes) {
-  // Build BFS tree rooted at targetId
-  const model = buildGraphModel(notes, id);
+  // Use the real (non-overridden) BFS tree so DFS only visits id's actual subtree
+  const model = buildGraphModel(notes);
 
   // Find which component contains our target
   const compIdx = model.componentIndexById.get(id);
