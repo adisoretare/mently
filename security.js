@@ -246,6 +246,10 @@ export function validateNote(raw) {
     tags: sanitizeTags(raw.tags),
     createdAt: isValidEpoch(raw.createdAt) ? raw.createdAt : Date.now(),
     updatedAt: isValidEpoch(raw.updatedAt) ? raw.updatedAt : Date.now(),
+    collapsed: Boolean(raw.collapsed),
+    isTask:    Boolean(raw.isTask),
+    done:      Boolean(raw.done),
+    isSun:     Boolean(raw.isSun),
   };
 }
 

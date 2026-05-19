@@ -185,7 +185,7 @@ export function getNoteById(id) {
  * Adaugă o notiță nouă.
  * Sanitizarea e delegată complet către security.js → date curate ÎN store.
  */
-export function addNote({ title, content, tags } = {}) {
+export function addNote({ title, content, tags, collapsed = false, isTask = false, done = false, isSun = false } = {}) {
   // Rate limit — protejează împotriva spam-ului (form sau script automat).
   // Verificat ÎNAINTE de orice procesare → economie CPU pe rafale de spam.
   if (!insertLimiter.tryAcquire()) {
@@ -213,6 +213,10 @@ export function addNote({ title, content, tags } = {}) {
     tags: sanitizeTags(tags),
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    collapsed: Boolean(collapsed),
+    isTask:    Boolean(isTask),
+    done:      Boolean(done),
+    isSun:     Boolean(isSun),
   };
 
   state.notes.push(note);
@@ -231,8 +235,12 @@ export function updateNote(id, patch = {}) {
     if (!cleaned) throw new SecurityError('Titlul este obligatoriu.', 'TITLE_REQUIRED');
     next.title = cleaned;
   }
-  if ('content' in patch) next.content = sanitizeContent(patch.content);
-  if ('tags' in patch)    next.tags    = sanitizeTags(patch.tags);
+  if ('content' in patch)   next.content   = sanitizeContent(patch.content);
+  if ('tags' in patch)      next.tags      = sanitizeTags(patch.tags);
+  if ('collapsed' in patch) next.collapsed = Boolean(patch.collapsed);
+  if ('isTask' in patch)    next.isTask    = Boolean(patch.isTask);
+  if ('done' in patch)      next.done      = Boolean(patch.done);
+  if ('isSun' in patch)    next.isSun     = Boolean(patch.isSun);
   next.updatedAt = Date.now();
 
   state.notes[idx] = next;

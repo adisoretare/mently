@@ -216,27 +216,73 @@ function degreeOf(adjacency, id) {
 }
 
 /**
- * Găsește "soarele" unei componente — nodul cu cel mai mare grad.
- * La egalitate, alege id-ul cel mai mic (lexicografic) pentru stabilitate —
- * altfel soarele ar "sări" între noduri la fiecare rebuild dacă două noduri
- * au același grad.
+ * Găsește "soarele" unei componente — centroidul arborelui BFS.
+ *
+ * Centroidul = nodul al cărui sub-arbore maxim este cel mai mic.
+ * Vizual: cel mai "echilibrat" centru din care toate ramurile se văd la adâncime egală.
+ * Dacă există egalitate, preferăm nodul cu grad mai mare; la egalitate de grad, id-ul
+ * lexicografic mai mic pentru stabilitate.
  *
  * @param {Set<string>} componentIds
  * @param {Map<string, Set<string>>} adjacency
  * @returns {string} id-ul soarelui
  */
 function findSun(componentIds, adjacency) {
-  let sun = null;
-  let maxDeg = -1;
+  if (componentIds.size === 1) return [...componentIds][0];
+
+  // Alegem un nod de start arbitrar (gradul maxim — stabil lexicografic)
+  let start = null, maxDeg = -1;
   for (const id of componentIds) {
     const deg = degreeOf(adjacency, id);
-    // Aleg nodul cu grad maxim; la egalitate, id-ul lexicografic mai mic câștigă
-    if (deg > maxDeg || (deg === maxDeg && (sun === null || id < sun))) {
-      maxDeg = deg;
-      sun = id;
+    if (deg > maxDeg || (deg === maxDeg && (start === null || id < start))) {
+      maxDeg = deg; start = id;
     }
   }
-  return sun;
+
+  const n = componentIds.size;
+
+  // BFS pentru a stabili ordinea de traversare și părintele fiecărui nod
+  const parent = new Map([[start, null]]);
+  const order  = [start];
+  const queue  = [start];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const nb of (adjacency.get(cur) || [])) {
+      if (!parent.has(nb) && componentIds.has(nb)) {
+        parent.set(nb, cur);
+        order.push(nb);
+        queue.push(nb);
+      }
+    }
+  }
+
+  // Calculăm dimensiunile sub-arborilor bottom-up (invers față de ordinea BFS)
+  const subSize = new Map();
+  for (const id of componentIds) subSize.set(id, 1);
+  for (let i = order.length - 1; i >= 1; i--) {
+    const id = order[i];
+    const p  = parent.get(id);
+    subSize.set(p, subSize.get(p) + subSize.get(id));
+  }
+
+  // Centroidul: nodul unde cel mai mare sub-arbore adiacent ≤ n/2
+  // Un sub-arbore adiacent poate fi oricare vecin: copil (subSize[nb]) sau
+  // "parintele" (n - subSize[cur]).
+  let centroid = start;
+  let minMaxSub = Infinity;
+  for (const id of componentIds) {
+    let maxSub = n - subSize.get(id); // sub-arborele "de sus" (spre rădăcina BFS)
+    for (const nb of (adjacency.get(id) || [])) {
+      if (componentIds.has(nb) && parent.get(nb) === id) {
+        maxSub = Math.max(maxSub, subSize.get(nb));
+      }
+    }
+    if (maxSub < minMaxSub || (maxSub === minMaxSub && (degreeOf(adjacency, id) > degreeOf(adjacency, centroid) || (degreeOf(adjacency, id) === degreeOf(adjacency, centroid) && id < centroid)))) {
+      minMaxSub = maxSub;
+      centroid = id;
+    }
+  }
+  return centroid;
 }
 
 /**
@@ -252,11 +298,12 @@ function findSun(componentIds, adjacency) {
  *
  * @param {string} sunId
  * @param {Map<string, Set<string>>} adjacency
- * @returns {{ depths: Map<string, number>, childCounts: Map<string, number> }}
+ * @returns {{ depths: Map<string, number>, childCounts: Map<string, number>, bfsParent: Map<string, string|null> }}
  */
 function computeDepths(sunId, adjacency) {
   const depths = new Map([[sunId, 0]]);
   const childCounts = new Map();
+  const bfsParent = new Map([[sunId, null]]);
   const queue = [sunId];
   while (queue.length) {
     const curr = queue.shift();
@@ -267,6 +314,7 @@ function computeDepths(sunId, adjacency) {
       for (const n of neighbors) {
         if (!depths.has(n)) {
           depths.set(n, d + 1);
+          bfsParent.set(n, curr);
           queue.push(n);
           kids++;
         }
@@ -274,7 +322,7 @@ function computeDepths(sunId, adjacency) {
     }
     childCounts.set(curr, kids);
   }
-  return { depths, childCounts };
+  return { depths, childCounts, bfsParent };
 }
 
 /* ─────────────────────────── Aggregator ─────────────────────────── */
@@ -295,7 +343,9 @@ function computeDepths(sunId, adjacency) {
  *   componentIndexById: Map<string, number>,
  *   sunIds: Set<string>,
  *   depths: Map<string, number>,
- *   childCounts: Map<string, number>
+ *   childCounts: Map<string, number>,
+ *   bfsParent: Map<string, string|null>,
+ *   hiddenIds: Set<string>
  * }}
  */
 export function buildGraphModel(notes, sunOverrideId = null) {
@@ -308,6 +358,11 @@ export function buildGraphModel(notes, sunOverrideId = null) {
   const depths = new Map();
   const childCounts = new Map();
   const componentIndexById = new Map();
+  const bfsParent = new Map();
+
+  // Build per-note flag lookups once — used for sun selection and hiddenIds.
+  const collapsedById = new Map(notes.map((n) => [n.id, Boolean(n.collapsed)]));
+  const pinnedSunById = new Map(notes.map((n) => [n.id, Boolean(n.isSun)]));
 
   for (let idx = 0; idx < components.length; idx++) {
     const comp = components[idx];
@@ -315,21 +370,30 @@ export function buildGraphModel(notes, sunOverrideId = null) {
     // Fiecare nod primește indexul componentei sale — folosit pentru rotația de paletă.
     for (const id of comp) componentIndexById.set(id, idx);
 
-    // Dacă nodul selectat aparține acestei componente, îl promovăm ca soare.
-    // Altfel, folosim nodul cu gradul maxim (cel mai conectat = natural dominant).
+    // Prioritate soare:
+    //   1. sunOverrideId (nodul selectat de utilizator) — perspectivă temporară
+    //   2. nodul marcat explicit isSun=true în această componentă — alegere persistentă
+    //   3. centroidul componentei (fallback) — exclus noduri colapsate
     let sun;
     if (sunOverrideId && comp.has(sunOverrideId)) {
       sun = sunOverrideId;
     } else {
-      sun = findSun(comp, adjacency);
+      const pinned = [...comp].find((id) => pinnedSunById.get(id));
+      if (pinned) {
+        sun = pinned;
+      } else {
+        const eligible = new Set([...comp].filter((id) => !collapsedById.get(id)));
+        sun = findSun(eligible.size > 0 ? eligible : comp, adjacency);
+      }
     }
 
     sunIds.add(sun);
 
     // BFS adâncimi + copii direcți din soare — acoperă toată componenta
-    const { depths: compDepths, childCounts: compChildCounts } = computeDepths(sun, adjacency);
+    const { depths: compDepths, childCounts: compChildCounts, bfsParent: compParent } = computeDepths(sun, adjacency);
     for (const [id, d] of compDepths) depths.set(id, d);
     for (const [id, c] of compChildCounts) childCounts.set(id, c);
+    for (const [id, p] of compParent) bfsParent.set(id, p);
   }
 
   // Nodurile complet izolate (fără nicio muchie) nu apar în adjacency →
@@ -338,8 +402,22 @@ export function buildGraphModel(notes, sunOverrideId = null) {
     if (!depths.has(note.id)) {
       depths.set(note.id, 0);
       childCounts.set(note.id, 0);
+      bfsParent.set(note.id, null);
     }
   }
 
-  return { nodes: notes, edges, adjacency, tagFrequency, components, componentIndexById, sunIds, depths, childCounts };
+  // Compute hiddenIds: a node is hidden iff any strict ancestor in the BFS tree has collapsed=true.
+  const hiddenIds = new Set();
+  for (const note of notes) {
+    let ancestor = bfsParent.get(note.id);
+    while (ancestor !== null && ancestor !== undefined) {
+      if (collapsedById.get(ancestor)) {
+        hiddenIds.add(note.id);
+        break;
+      }
+      ancestor = bfsParent.get(ancestor);
+    }
+  }
+
+  return { nodes: notes, edges, adjacency, tagFrequency, components, componentIndexById, sunIds, depths, childCounts, bfsParent, hiddenIds };
 }
