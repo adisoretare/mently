@@ -32,8 +32,8 @@ const ro = {
 
   list: {
     heading: 'Notițe',
-    empty: 'Niciun nod încă. Folosește formularul de mai sus.',
-    emptyHero: 'Minte goală, potențial maxim.',
+    empty: 'Adaugă prima notiță cu tag-uri — conexiunile se construiesc singure.',
+    emptyHero: 'Graful tău de cunoștințe te așteaptă.',
     countOne: '1 notiță',
     countMany: (n) => `${n} notițe`,
     editLabel: (title) => `Editează: ${title}`,
@@ -173,8 +173,8 @@ const ro = {
   },
 
   meta: {
-    blank: 'O constelație goală.',
-    blankHint: 'Adaugă o notiță în panoul lateral — graful se construiește din tag-urile comune.',
+    blank: 'Nicio conexiune încă.',
+    blankHint: 'Adaugă notițe cu tag-uri comune — conexiunile apar automat.',
   },
 };
 
