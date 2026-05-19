@@ -68,7 +68,7 @@ export function render(notes) {
   containerEl.innerHTML = `
     <header class="flex items-baseline justify-between mb-3">
       <h2 class="text-[11px] uppercase tracking-[0.18em] text-paper-500/80">${escapeHtml(t.list.heading)}</h2>
-      <span class="text-[10px] font-mono text-paper-500/60 tabular-nums">
+      <span class="text-[11px] font-mono text-paper-500/80 tabular-nums">
         ${notes.length === 1 ? escapeHtml(t.list.countOne) : escapeHtml(t.list.countMany(notes.length))}
       </span>
     </header>
@@ -129,7 +129,7 @@ function renderEmpty() {
 function renderActiveFilter(tag) {
   return `
     <div class="mb-3 flex items-center gap-2 px-3 py-2 bg-signal-400/10 border border-signal-400/30 rounded-md">
-      <span class="text-[10px] uppercase tracking-wider text-signal-300/80">${escapeHtml(t.list.filterLabel)}</span>
+      <span class="text-[11px] uppercase tracking-wider text-signal-300/90">${escapeHtml(t.list.filterLabel)}</span>
       <span class="text-xs font-mono text-signal-300">${escapeHtml(tag)}</span>
       <button
         type="button"
@@ -232,7 +232,7 @@ export function renderTagChip(tag) {
       <button
         type="button"
         data-tag="${escapeHtml(tag)}"
-        class="mently-btn text-[10px] font-mono px-2 py-0.5 rounded-full border ${className} focus-visible:outline-none focus-visible:border-signal-400"
+        class="mently-btn text-[11px] font-mono px-2 py-0.5 rounded-full border ${className} focus-visible:outline-none focus-visible:border-signal-400"
         aria-label="${escapeHtml(t.list.tagFilterLabel(tag))}"
         aria-pressed="${isActive ? 'true' : 'false'}"
       >${escapeHtml(tag)}</button>
@@ -251,7 +251,7 @@ function renderClearAll() {
     : `<button
         type="button"
         data-action="clear-all"
-        class="mently-btn text-[10px] text-paper-500/60 hover:text-red-400 underline underline-offset-2 transition-colors"
+        class="mently-btn text-[11px] text-paper-500/80 hover:text-red-400 underline underline-offset-2 transition-colors"
         aria-pressed="false"
       >${escapeHtml(t.list.clearAll)}</button>`;
 
@@ -262,7 +262,7 @@ function renderClearAll() {
         <button
           type="button"
           data-action="export"
-          class="mently-btn flex items-center gap-1.5 text-[10px] text-paper-500/60 hover:text-paper-300 transition-colors"
+          class="mently-btn flex items-center gap-1.5 text-[11px] text-paper-500/80 hover:text-paper-300 transition-colors"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -274,7 +274,7 @@ function renderClearAll() {
         <button
           type="button"
           data-action="import"
-          class="mently-btn flex items-center gap-1.5 text-[10px] text-paper-500/60 hover:text-paper-300 transition-colors"
+          class="mently-btn flex items-center gap-1.5 text-[11px] text-paper-500/80 hover:text-paper-300 transition-colors"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>

@@ -137,8 +137,46 @@ export function init() {
     Tasks.setSelectedId(id);
   });
 
+  initSidebarToggle();
+
   subscribe(handleStateChange);
   handleStateChange();
+}
+
+/* ─────────────────────────── Sidebar toggle (desktop) ─────────────────────────── */
+
+const SIDEBAR_KEY = 'mently:sidebar-collapsed';
+
+function initSidebarToggle() {
+  const btn = document.getElementById('sidebar-toggle');
+  if (!btn) return;
+
+  // Restore persisted state
+  if (localStorage.getItem(SIDEBAR_KEY) === '1') {
+    setCollapsed(btn, true, false);
+  }
+
+  btn.addEventListener('click', () => {
+    const collapsed = document.body.classList.contains('sidebar-collapsed');
+    setCollapsed(btn, !collapsed, true);
+  });
+}
+
+function setCollapsed(btn, collapse, shouldAnnounce) {
+  document.body.classList.toggle('sidebar-collapsed', collapse);
+  btn.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+  btn.setAttribute('aria-label', collapse ? t.sidebar.expand : t.sidebar.collapse);
+
+  const iconCollapse = btn.querySelector('[data-icon="collapse"]');
+  const iconExpand   = btn.querySelector('[data-icon="expand"]');
+  if (iconCollapse) iconCollapse.style.display = collapse ? 'none' : '';
+  if (iconExpand)   iconExpand.style.display   = collapse ? ''     : 'none';
+
+  localStorage.setItem(SIDEBAR_KEY, collapse ? '1' : '0');
+  if (shouldAnnounce) announce(collapse ? t.a11y.sidebarCollapsed : t.a11y.sidebarExpanded);
+
+  // Trigger canvas resize — display:none change doesn't fire window.resize
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 }
 
 export { announce };
@@ -215,7 +253,7 @@ function statCard(label, value) {
     <div class="relative bg-ink-900/60 border border-ink-800 rounded-xl px-2 py-2.5 text-center overflow-hidden group hover:border-ink-700 transition-colors cursor-default">
       <!-- Linie de accent subtilă în partea de sus — sugerează că cardul e "activ" -->
       <div class="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-signal-400/25 to-transparent"></div>
-      <div class="text-[9px] uppercase tracking-[0.14em] text-paper-500/60 group-hover:text-paper-500/80 transition-colors">${escapeHtml(label)}</div>
+      <div class="text-[11px] uppercase tracking-[0.14em] text-paper-500/85 group-hover:text-paper-500 transition-colors">${escapeHtml(label)}</div>
       <div class="font-mono text-lg text-paper-100 mt-0.5 tabular-nums leading-none">${value}</div>
     </div>
   `;

@@ -21,6 +21,7 @@ import * as Store from './store.js';
 import * as UI from './ui.js';
 import * as Security from './security.js';
 import * as Focus from './focus.js';
+import * as Fullscreen from './ui-fullscreen.js';
 import { t } from './i18n.js';
 
 function boot() {
@@ -35,6 +36,8 @@ function boot() {
 
     // Initialize Focus mode — must be after UI.init() so #canvas-wrapper exists
     Focus.init(document.getElementById('canvas-wrapper'));
+
+    Fullscreen.init();
 
     // Callback-ul de storage errors e wired după UI.init() pentru că UI.announce
     // are nevoie de elementul aria-live montat de UI.

@@ -98,6 +98,16 @@ const ro = {
     close: 'Închide panoul',
   },
 
+  sidebar: {
+    collapse: 'Închide bara laterală',
+    expand: 'Deschide bara laterală',
+  },
+
+  fullscreen: {
+    enter: 'Mod ecran complet',
+    exit: 'Ieși din ecran complet',
+  },
+
   panel: {
     panelLabel: 'Detalii nod',
     closeLabel: 'Închide',
@@ -127,6 +137,10 @@ const ro = {
     tagHighlighted: (tag) => `Componenta conexă pentru tag-ul "${tag}" este evidențiată.`,
     drawerOpened: 'Panou deschis.',
     drawerClosed: 'Panou închis.',
+    sidebarCollapsed: 'Bara laterală închisă.',
+    sidebarExpanded: 'Bara laterală deschisă.',
+    fullscreenEntered: 'Mod ecran complet activ.',
+    fullscreenExited: 'Mod ecran complet dezactivat.',
     editingStart: (title) => `Editezi notița "${title}".`,
     editingCancel: 'Editare anulată.',
     clearAllArmed: 'Confirmă ștergerea totală — click din nou pentru a continua.',

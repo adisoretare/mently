@@ -312,7 +312,7 @@ body {
   margin-bottom: 8px;
 }
 .node-panel-tag {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--c-signal-400);
   background: rgba(251,146,60,0.08);
   border: 1px solid rgba(251,146,60,0.2);
@@ -401,7 +401,7 @@ article.done .mently-card-title {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--c-signal-400);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -439,7 +439,7 @@ article.done .mently-card-title {
 .tasks-toggle-btn:hover { color: var(--c-paper-300); }
 .tasks-chevron {
   display: inline-block;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--c-paper-500);
   transition: transform 200ms var(--ease-out-soft);
   line-height: 1;
@@ -456,14 +456,13 @@ article.done .mently-card-title {
   color: inherit;
 }
 .tasks-count-badge {
-  font-size: 9px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
   color: var(--c-paper-500);
-  opacity: 0.7;
   margin-left: 2px;
 }
 .tasks-show-done-btn {
-  font-size: 9px;
+  font-size: 11px;
   background: none;
   border: 1px solid var(--c-ink-700);
   border-radius: 4px;
@@ -491,7 +490,6 @@ article.done .mently-card-title {
   color: var(--c-paper-500);
   font-style: italic;
   padding: 8px 0 4px;
-  opacity: 0.7;
 }
 
 /* ───────── 20. Focus bar — bottom step navigator overlaying canvas ─────────
@@ -547,7 +545,7 @@ article.done .mently-card-title {
   max-width: 280px;
 }
 .focus-bar-step {
-  font-size: 9px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
   color: var(--c-signal-400);
   letter-spacing: 0.08em;
@@ -563,7 +561,7 @@ article.done .mently-card-title {
   max-width: 240px;
 }
 .focus-bar-hint {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--c-paper-500);
   font-style: italic;
 }
@@ -574,7 +572,7 @@ article.done .mently-card-title {
   color: rgba(248,113,113,0.7);
   cursor: pointer;
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-family: ui-monospace, monospace;
   letter-spacing: 0.06em;
   transition: color 100ms ease, border-color 100ms ease, background-color 100ms ease;
@@ -584,4 +582,59 @@ article.done .mently-card-title {
   color: var(--c-crimson-400);
   border-color: rgba(239,68,68,0.6);
   background: rgba(239,68,68,0.08);
+}
+
+/* ───────── 21. Canvas controls — sidebar toggle + fullscreen toggle ─────────
+   Absolute top-right inside #canvas-wrapper. z-20 = above node-panel (z-10).
+   Hidden on mobile — hamburger handles sidebar there.
+*/
+#canvas-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: none; /* shown via md: media query below */
+  align-items: center;
+  gap: 4px;
+}
+@media (min-width: 768px) {
+  #canvas-controls { display: flex; }
+}
+
+.canvas-ctrl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(28, 25, 23, 0.80);
+  border: 1px solid var(--c-ink-700);
+  border-radius: var(--radius-sm);
+  color: var(--c-paper-500);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  flex-shrink: 0;
+  line-height: 0;
+  padding: 0;
+}
+.canvas-ctrl-btn:hover {
+  color: var(--c-paper-100);
+  border-color: var(--c-ink-700);
+  background: rgba(28, 25, 23, 0.95);
+}
+.canvas-ctrl-btn:active { transform: scale(0.95); }
+.canvas-ctrl-btn[aria-pressed="true"],
+.canvas-ctrl-btn[aria-expanded="false"] {
+  color: var(--c-signal-400);
+  border-color: rgba(251, 146, 60, 0.35);
+}
+
+/* ───────── 22. Sidebar collapsed state (desktop only) ─────────
+   When body.sidebar-collapsed, hide sidebar on desktop. Canvas flex-1 fills width.
+   Mobile keeps its own drawer logic — not affected.
+*/
+@media (min-width: 768px) {
+  body.sidebar-collapsed #sidebar {
+    display: none;
+  }
 }
