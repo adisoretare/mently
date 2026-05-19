@@ -345,10 +345,7 @@ console.log(`Blocked: ${blocked}`); // → 5
 |---|---|
 | `RAPORT.md` | Documentație tehnică completă (arhitectură, module, algoritmi, securitate, cerințe sistem) |
 | `REFERAT.md` | Prezentare formală pentru jurizare (acest document) |
-| `forClaude/README.md` | Quick start, structura proiectului, stack tehnologic |
-| `forClaude/ARCHITECTURE.md` | Decizii arhitecturale, algoritmi, mapare la criterii barem |
-| `forClaude/SECURITY.md` | Threat model complet, mitigări detaliate, scenarii de test |
-| `forClaude/DEMO.md` | Script prezentare 7–10 minute cu timing, Q&A pregătit, backup plans |
+| `index.html` (CSP + comentarii) | Threat model și decizii de securitate vizibile direct în cod |
 
 ### 7.2 Demo practic — flux recomandat
 
