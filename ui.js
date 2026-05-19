@@ -119,7 +119,9 @@ export function init() {
     // (sunPromoted / sunReset). ui.js anunță doar pentru selecțiile din sidebar.
     List.setSelectedId(id);
     Tasks.setSelectedId(id);
-    id ? NodePanel.show(id) : NodePanel.hide();
+    if (!Focus.isActive()) {
+      id ? NodePanel.show(id) : NodePanel.hide();
+    }
   });
 
   // ─── Tag click sidebar → highlight componentă ───
