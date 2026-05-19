@@ -16,6 +16,7 @@ let steps = [];       // ordered array of note ids (leaves-first, target last)
 let stepIndex = 0;    // current step (0-based)
 let targetId = null;
 let storeUnsub = null;
+let preFocusSelectedId = null; // Fix 1: restore pre-focus selection on exit
 
 let barEl = null;          // the #focus-bar DOM element (lazily created)
 let canvasWrapper = null;  // set via init()
@@ -23,6 +24,7 @@ let canvasWrapper = null;  // set via init()
 /* ─── Public API ─── */
 
 export function init(wrapperEl) {
+  if (canvasWrapper) return; // Fix 3: guard against double-init
   canvasWrapper = wrapperEl;
 
   window.addEventListener('keydown', (e) => {
@@ -51,6 +53,7 @@ export function start(id) {
   const noteObj = getNoteById(id);
   if (!noteObj) return;
 
+  preFocusSelectedId = Canvas.getSelected(); // Fix 1: capture selection before overriding
   targetId = id;
   steps = computeSteps(id, notes);
   stepIndex = 0;
@@ -87,8 +90,9 @@ export function exit() {
   if (storeUnsub) { storeUnsub(); storeUnsub = null; }
 
   Canvas.setSpotlight(null);
-  // Return selectedId to null — the user left focus mode
-  Canvas.setSelected(null);
+  // Fix 1: restore selection that was active before focus mode started
+  Canvas.setSelected(preFocusSelectedId);
+  preFocusSelectedId = null;
 
   hideBar();
   announce(t.a11y.focusExited);
@@ -177,15 +181,15 @@ function handleStoreChange() {
   // If target note deleted, exit
   if (!getNoteById(targetId)) { exit(); return; }
 
-  // Filter steps — remove any deleted notes
-  const validIds = new Set(notes.map((n) => n.id));
-  const newSteps = steps.filter((id) => validIds.has(id));
-
+  // Fix 2: recompute steps from scratch so new edges/tags are reflected
+  const newSteps = computeSteps(targetId, notes);
   if (newSteps.length === 0) { exit(); return; }
 
-  // Clamp index and re-apply
+  // Try to keep user at the same note; if gone, clamp to end
+  const currentStepId = steps[stepIndex];
+  const newIdx = newSteps.indexOf(currentStepId);
   steps = newSteps;
-  stepIndex = Math.min(stepIndex, steps.length - 1);
+  stepIndex = newIdx >= 0 ? newIdx : Math.min(stepIndex, steps.length - 1);
   applyStep();
 }
 
