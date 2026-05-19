@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ro" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Mently — visual knowledge graph care transformă notițele fragmentate într-o hartă mentală vie." />
+  <meta name="theme-color" content="#0c0a09" />
+  <title>Mently — Visual Knowledge Graph</title>
+
+  <!-- Favicon inline (SVG data-URI) — zero requests HTTP, on-brand cu paleta amber/ink -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0a09'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='22' fill='%23fb923c'%3EM%3C/text%3E%3C/svg%3E" />
+
+  <!--
+    DECIZIE ARHITECTURALĂ (Cap. I — Inginerie web):
+    Folosim Tailwind CDN pentru viteza de dezvoltare în cele <12h ale concursului.
+    Într-un build de producție am folosi PostCSS + JIT pentru tree-shaking (CSS final ~5KB în loc de ~3MB CDN).
+    Configurăm tema înainte de a încărca scriptul pentru a expune designul tokens în clasele utilitare.
+  -->
+  <script>
+    // Tema Tailwind extinsă cu paleta brandului Mently
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"Instrument Serif"', 'ui-serif', 'Georgia', 'serif'],
+            sans:    ['"Geist"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono:    ['"Geist Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: {
+            ink:    { 950: '#0c0a09', 900: '#1c1917', 800: '#292524', 700: '#44403c' },
+            paper:  { 100: '#fafaf9', 300: '#d6d3d1', 500: '#a8a29e' },
+            signal: { 400: '#fb923c', 300: '#fdba74', 500: '#f97316' },
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tipografie distinctivă: Instrument Serif (display, italic) + Geist (sans) + Geist Mono (date) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body class="font-sans bg-ink-950 text-paper-100 antialiased overflow-hidden">
+
+  <!--
+    SHELL APLICAȚIE
+    - <aside> = formular notițe (Pasul 2)
+    - <main>  = canvas (Pasul 3)
+    Rolurile ARIA și atributele lang sunt declarate de la început pentru accesibilitate (Cap. III).
+  -->
+  <div id="app" class="h-[100dvh] w-screen flex flex-col md:flex-row" role="application" aria-label="Mently — visual knowledge graph">
+
+    <!-- Sidebar: 30% pe desktop, full-width pe mobil. Conținutul e injectat de ui.js -->
+    <aside
+      id="sidebar"
+      class="w-full md:w-[clamp(320px,30vw,460px)] md:h-full h-[40dvh] md:border-r border-b md:border-b-0 border-ink-800 bg-ink-900/60 backdrop-blur-sm flex-shrink-0 overflow-hidden"
+      aria-label="Editor de notițe"
+    ></aside>
+
+    <!-- Canvas wrapper: 70% pe desktop. Canvas HTML5 va fi randat aici (Pasul 3). -->
+    <main id="canvas-wrapper" class="flex-1 relative bg-ink-950" aria-label="Vizualizarea grafului de cunoștințe">
+      <canvas id="graph-canvas" class="absolute inset-0 w-full h-full" aria-hidden="true"></canvas>
+
+      <!-- Texturi de fundal (atmosferă, nu doar culoare plată) -->
+      <div class="pointer-events-none absolute inset-0 bg-grain opacity-[0.04]"></div>
+      <div class="pointer-events-none absolute inset-0 bg-vignette"></div>
+
+      <!-- Placeholder vizibil cât timp graful e gol (eliminat în Pasul 3) -->
+      <div id="canvas-placeholder" class="absolute inset-0 flex items-center justify-center text-center px-6 pointer-events-none">
+        <div class="max-w-md">
+          <p class="font-display italic text-5xl text-paper-300/40 leading-tight">A blank<br/>constellation.</p>
+          <p class="mt-4 text-sm text-paper-500/60">Adaugă o notiță în sidebar — graful se construiește din tag-urile comune.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ARIA live region pentru screen-reader announcements (Cap. III — accesibilitate) -->
+  <div id="aria-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!--
+    ENTRY POINT
+    type="module" → ES6 modules, import/export native, ordine deferred by default.
+    Beneficii arhitecturale: graf explicit de dependențe, strict mode automat, scope izolat.
+  -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

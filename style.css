@@ -1,0 +1,115 @@
+/* =============================================================================
+   style.css — Stiluri custom care depășesc utilitarele Tailwind
+   -----------------------------------------------------------------------------
+   DECIZIE: Tailwind acoperă 95% din nevoi prin utility classes; păstrăm aici doar:
+     1. Design tokens globali (CSS variables) — sursă unică de adevăr pentru tema.
+     2. Texturi/efecte greu de exprimat în utility classes (grain, vignette).
+     3. Optimizări canvas (rendering crisp, cursor states).
+     4. Accesibilitate (focus rings, reduced motion, scrollbar custom).
+   ========================================================================== */
+
+/* ---------- 1. Design Tokens (CSS Custom Properties) ---------- */
+:root {
+  /* Paleta brand — sincron cu tailwind.config */
+  --c-ink-950: #0c0a09;
+  --c-ink-900: #1c1917;
+  --c-ink-800: #292524;
+  --c-ink-700: #44403c;
+  --c-paper-100: #fafaf9;
+  --c-paper-300: #d6d3d1;
+  --c-paper-500: #a8a29e;
+  --c-signal-400: #fb923c;
+  --c-signal-300: #fdba74;
+  --c-signal-500: #f97316;
+
+  /* Curbe de animație (semantic, nu generic) */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-snap: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Densitate */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+/* ---------- 2. Base ---------- */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-feature-settings: "ss01", "cv11"; /* alternative stilistice Geist */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 3. Background atmospheric (Cap. III — eleganță estetică) ----------
+   Granulația și vignette-ul evită aspectul "AI generic flat dark mode".
+   Granulația e un SVG inline ca data URI → 0 request HTTP suplimentar. */
+.bg-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+.bg-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+}
+
+/* ---------- 4. Canvas — randare crisp pe display-uri high-DPI ---------- */
+#graph-canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  cursor: grab;
+  touch-action: none; /* dezactivăm gesturile native browser pentru drag pe touch */
+}
+#graph-canvas:active { cursor: grabbing; }
+
+/* ---------- 5. Scrollbar custom — consistent cu paleta dark ---------- */
+.mently-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-ink-700) transparent;
+}
+.mently-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.mently-scroll::-webkit-scrollbar-track { background: transparent; }
+.mently-scroll::-webkit-scrollbar-thumb {
+  background: var(--c-ink-800);
+  border-radius: 999px;
+}
+.mently-scroll::-webkit-scrollbar-thumb:hover { background: var(--c-ink-700); }
+
+/* ---------- 6. Accesibilitate — focus ring (Cap. III) ----------
+   :focus-visible only → tastatura primește ring, mouse-ul nu (nu deranjează vizual). */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--c-signal-400);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- 7. Screen-reader-only utility (în caz că Tailwind nu se încarcă) ---------- */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ---------- 8. Prefers-reduced-motion (accesibilitate WCAG 2.3.3) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 9. Animație de boot (subtilă, semnal de "viu") ---------- */
+@keyframes mently-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: mently-fade-up 0.6s var(--ease-out-soft) both;
+}
