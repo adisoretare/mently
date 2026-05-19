@@ -24,6 +24,29 @@ import {
 const STORAGE_KEY = 'mently:v1:state';
 const STORE_VERSION = 1;
 
+// Setat pe false la prima eroare de localStorage → saveToStorage nu mai spam-uiește
+let storageAvailable = true;
+// Callback opțional injectat de main.js → anunță utilizatorul despre erori de storage
+let storageErrorReporter = null;
+
+/** Înregistrează un callback (fn: string → void) apelat la erori de storage. */
+export function setStorageErrorReporter(fn) {
+  storageErrorReporter = typeof fn === 'function' ? fn : null;
+}
+
+// Mesaje localizate injectate din main.js via setMessages().
+// DE CE nu importăm i18n.js direct: store.js trebuie să rămână headless-testabil
+// (fără DOM, fără import chains care trag UI). Același pattern ca setStorageErrorReporter.
+let messages = null;
+
+/**
+ * Injectează mesajele localizate (t.errors din i18n.js) pentru SecurityError.
+ * Apelat o singură dată din main.js după Store.init().
+ */
+export function setMessages(m) {
+  messages = (m && typeof m === 'object') ? m : null;
+}
+
 /**
  * Rate limiter pentru addNote — 30 inserări/minut.
  * Aplicat la TOATE apelurile addNote (formular sau programatic via __mently.Store).
@@ -64,6 +87,8 @@ function loadFromStorage() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.notes)) {
       console.warn('[store] Stare coruptă în localStorage. Resetez.');
+      // Șterge blob-ul corupt ca să nu re-eșueze la fiecare reload
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
       return initialState();
     }
 
@@ -94,18 +119,30 @@ function loadFromStorage() {
       meta: { ...initialState().meta, ...(parsed.meta || {}) },
     };
   } catch (err) {
-    console.error('[store] localStorage indisponibil — rulez in-memory:', err);
+    // localStorage indisponibil (Safari Private, Firefox strict) — modul in-memory
+    storageAvailable = false;
+    console.info('[store] localStorage indisponibil — rulez in-memory:', err.message);
     return initialState();
   }
 }
 
 function saveToStorage() {
+  if (!storageAvailable) return false;
   try {
     state.meta.updatedAt = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
   } catch (err) {
-    console.error('[store] Persistare eșuată:', err);
+    const isQuota = err.name === 'QuotaExceededError' || err.code === 22;
+    if (isQuota) {
+      // Stocare plină — anunță utilizatorul, dar nu dezactivăm complet (poate elibera spațiu)
+      console.warn('[store] localStorage plin (QuotaExceededError).');
+      storageErrorReporter?.('quota');
+    } else {
+      storageAvailable = false;
+      console.error('[store] Persistare eșuată:', err);
+      storageErrorReporter?.('disabled');
+    }
     return false;
   }
 }
@@ -152,15 +189,22 @@ export function addNote({ title, content, tags } = {}) {
   // Rate limit — protejează împotriva spam-ului (form sau script automat).
   // Verificat ÎNAINTE de orice procesare → economie CPU pe rafale de spam.
   if (!insertLimiter.tryAcquire()) {
-    throw new SecurityError('Prea multe inserări consecutive. Așteaptă câteva secunde.');
+    // Mesajul vine din i18n via injecție — store.js nu importă i18n direct.
+    throw new SecurityError(
+      messages?.rateLimited ?? 'Rate limited.',
+      'RATE_LIMITED'
+    );
   }
   // Cap pe numărul total — DoS prevention (n² în physics.js devine impractical >1k)
   if (state.notes.length >= LIMITS.NOTES_MAX_COUNT) {
-    throw new SecurityError(`Limită atinsă: maxim ${LIMITS.NOTES_MAX_COUNT} notițe.`);
+    throw new SecurityError(
+      messages?.notesCapReached(LIMITS.NOTES_MAX_COUNT) ?? `Max ${LIMITS.NOTES_MAX_COUNT} notes.`,
+      'NOTES_CAP_REACHED'
+    );
   }
 
   const cleanTitle = sanitizeTitle(title);
-  if (!cleanTitle) throw new Error('Titlul este obligatoriu.');
+  if (!cleanTitle) throw new SecurityError('Titlul este obligatoriu.', 'TITLE_REQUIRED');
 
   const note = {
     id: generateId(),
@@ -184,7 +228,7 @@ export function updateNote(id, patch = {}) {
   const next = { ...state.notes[idx] };
   if ('title' in patch) {
     const cleaned = sanitizeTitle(patch.title);
-    if (!cleaned) throw new Error('Titlul este obligatoriu.');
+    if (!cleaned) throw new SecurityError('Titlul este obligatoriu.', 'TITLE_REQUIRED');
     next.title = cleaned;
   }
   if ('content' in patch) next.content = sanitizeContent(patch.content);

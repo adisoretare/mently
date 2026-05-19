@@ -145,7 +145,8 @@ export function tick(sim, edges) {
       }
 
       const dist = Math.sqrt(dist2);
-      const force = cfg.repulsion / dist2; // F = K_r / d²
+      // Clamp forța la K_r → previne spike-uri numerice când nodurile sunt quasi-suprapuse
+      const force = Math.min(cfg.repulsion / dist2, cfg.repulsion); // F = K_r / d²
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 
@@ -224,12 +225,20 @@ export function getNode(sim, id) {
   return sim.nodes.get(id);
 }
 
-/** Setează poziția unui nod (folosit la drag). Resetează viteza. */
+// Raza maximă posibilă a unui nod = NODE_BASE_RADIUS + bonusul pentru grad maxim.
+// 18px e umbrela cea mai conservatoare — niciun nod nu va depăși această rază
+// indiferent de câte muchii are. Folosit ca margine de siguranță la clamp-ul de viewport
+// (nodul rămâne complet vizibil, nu doar centrul lui).
+export const NODE_MAX_RADIUS = 18;
+
+/** Setează poziția unui nod (folosit la drag). Resetează viteza.
+ *  Clampează la marginile viewport-ului astfel că nodul rămâne vizibil. */
 export function setNodePosition(sim, id, x, y) {
   const node = sim.nodes.get(id);
   if (!node) return;
-  node.x = x;
-  node.y = y;
+  const r = NODE_MAX_RADIUS;
+  node.x = Math.max(r, Math.min(sim.width  - r, x));
+  node.y = Math.max(r, Math.min(sim.height - r, y));
   node.vx = 0;
   node.vy = 0;
 }

@@ -36,6 +36,17 @@ export function init() {
   const ariaLive = document.getElementById('aria-live');
   setAriaLive(ariaLive);
 
+  // Suprascriem aria-label-urile statice din index.html cu valorile din i18n.
+  // index.html are fallback-uri hardcodate pentru cazul fără JS; ui.js le înlocuiește
+  // imediat ce pornește ca să i18n.js rămână singura sursă de adevăr pentru texte.
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.setAttribute('aria-label', t.a11y.appLabel);
+  if (sidebarEl) sidebarEl.setAttribute('aria-label', t.a11y.sidebarRegion);
+  const canvasWrapperEl = document.getElementById('canvas-wrapper');
+  if (canvasWrapperEl) canvasWrapperEl.setAttribute('aria-label', t.a11y.canvasRegion);
+  const drawerOpenBtn = document.getElementById('drawer-open');
+  if (drawerOpenBtn) drawerOpenBtn.setAttribute('aria-label', t.drawer.open);
+
   if (!sidebarEl || !canvasEl) {
     console.error('[ui] Elemente DOM lipsă — verifică index.html');
     return;
@@ -106,10 +117,10 @@ function renderSidebarShell() {
         </button>
       </header>
 
-      <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="Statistici graf"></div>
+      <div id="stats-section" class="px-7 pb-5 flex-shrink-0" aria-label="${escapeHtml(t.a11y.statsRegion)}"></div>
 
       <div class="flex-1 overflow-y-auto mently-scroll px-7 pb-8 space-y-6">
-        <section id="form-section" aria-label="Formular notițe"></section>
+        <section id="form-section" aria-label="${escapeHtml(t.a11y.formRegion)}"></section>
         <section id="list-section" aria-label="${escapeHtml(t.list.heading)}"></section>
       </div>
     </div>
@@ -125,10 +136,10 @@ function handleStateChange() {
   if (statsEl) {
     statsEl.innerHTML = `
       <div class="grid grid-cols-4 gap-1.5">
-        ${statCard('Notes', notes.length)}
-        ${statCard('Edges', model.edges.length)}
-        ${statCard('Tags', model.tagFrequency.length)}
-        ${statCard('Cmps', model.components.length)}
+        ${statCard(t.stats.nodes, notes.length)}
+        ${statCard(t.stats.edges, model.edges.length)}
+        ${statCard(t.stats.tags, model.tagFrequency.length)}
+        ${statCard(t.stats.components, model.components.length)}
       </div>
     `;
   }

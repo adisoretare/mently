@@ -146,7 +146,7 @@ function template() {
         <label for="note-title" class="block text-[11px] font-medium text-paper-300 mb-1.5">
           ${escapeHtml(t.form.titleLabel)}
           <span class="text-signal-400" aria-hidden="true">*</span>
-          <span class="sr-only">(obligatoriu)</span>
+          <span class="sr-only">${escapeHtml(t.form.requiredHint)}</span>
         </label>
         <input
           id="note-title"
@@ -188,7 +188,7 @@ function template() {
           id="tag-chips-wrap"
           class="flex flex-wrap items-center gap-1.5 bg-ink-950/60 border border-ink-800 rounded-md px-2 py-1.5 min-h-[42px] focus-within:border-signal-400 transition-colors cursor-text"
           role="group"
-          aria-label="Tag-uri adăugate"
+          aria-label="${escapeHtml(t.form.tagsAddedLabel)}"
         >
           <input
             id="note-tag-input"
@@ -281,22 +281,23 @@ function commitTag(raw) {
       showFormError(t.errors.invalidTag);
       flashError(tagWrapEl);
     }
-    return;
+    return false;
   }
   if (tags.includes(clean)) {
     showFormError(t.errors.duplicateTag);
     flashError(tagWrapEl);
-    return;
+    return false;
   }
   if (tags.length >= LIMITS.TAGS_MAX_COUNT) {
     showFormError(t.errors.tagsTooMany);
-    return;
+    return false;
   }
 
   tags.push(clean);
   tagInput.value = '';
   hideFormError();
   renderChips();
+  return true;
 }
 
 function renderChips() {
@@ -312,7 +313,7 @@ function renderChips() {
         type="button"
         data-remove-chip="${idx}"
         class="hover:text-signal-400 focus-visible:text-signal-400 focus-visible:outline-none -mr-0.5 px-0.5"
-        aria-label="Șterge tag ${escapeHtml(tag)}"
+        aria-label="${escapeHtml(t.form.removeTagLabel(tag))}"
       >×</button>
     `;
     tagWrapEl.insertBefore(chip, tagInput);
@@ -326,7 +327,12 @@ function handleSubmit(e) {
   hideFormError();
   hideFieldError(titleErrorEl, titleInput);
 
-  if (tagInput.value.trim()) commitTag(tagInput.value);
+  // Dacă utilizatorul a lăsat ceva în tag input, încearcă să-l commit-uieze.
+  // Dacă tag-ul e invalid, abort — eroarea e deja vizibilă.
+  if (tagInput.value.trim()) {
+    const committed = commitTag(tagInput.value);
+    if (!committed) return;
+  }
 
   const payload = {
     title: titleInput.value,
@@ -347,12 +353,11 @@ function handleSubmit(e) {
       resetForm();
     }
   } catch (err) {
-    const msg = err.message || 'Eroare necunoscută.';
-    if (msg.includes('obligatoriu')) {
+    if (err.code === 'TITLE_REQUIRED') {
       showFieldError(titleErrorEl, titleInput, t.errors.titleRequired);
       titleInput.focus();
     } else {
-      showFormError(msg);
+      showFormError(err.message || t.errors.unknown);
     }
   }
 }

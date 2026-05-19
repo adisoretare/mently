@@ -57,7 +57,13 @@ export function init() {
 
   document.addEventListener('keydown', handleGlobalKeydown);
   sidebarEl.addEventListener('keydown', handleSidebarKeydown);
-  window.addEventListener('resize', syncToBreakpoint, { passive: true });
+
+  // rAF coalescing — evităm sute de apeluri pe resize drag (identic cu canvas.js)
+  let resizeFrame = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(syncToBreakpoint);
+  }, { passive: true });
 }
 
 /* ─────────────────────────── Open / Close ─────────────────────────── */
@@ -76,11 +82,12 @@ export function open() {
 
   announce(t.a11y.drawerOpened);
 
-  // Focus primul element focusabil DUPĂ tranziție (300ms)
+  // Focus primul element focusabil după tranziție (0ms sub reduced-motion, 320ms altfel)
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   setTimeout(() => {
     const first = firstFocusable(sidebarEl);
     first?.focus();
-  }, 320);
+  }, reduced ? 0 : 320);
 }
 
 export function close() {
@@ -143,13 +150,18 @@ function isDesktop() {
  */
 function syncToBreakpoint() {
   if (isDesktop()) {
-    // Desktop: sidebar e mereu vizibil, "logica" de drawer e off
+    // Desktop: sidebar e mereu vizibil, "logica" de drawer e off.
+    // Dacă drawer-ul era deschis (ex: rotire device → desktop), restituim focus-ul.
+    if (isOpen && previouslyFocused && typeof previouslyFocused.focus === 'function') {
+      previouslyFocused.focus();
+    }
     sidebarEl.classList.remove('is-open');
     backdropEl?.classList.remove('is-visible');
     sidebarEl.removeAttribute('aria-hidden');
     openBtn?.classList.remove('hidden'); // md:hidden preia oricum pe desktop
     document.body.style.overflow = '';
     isOpen = false;
+    previouslyFocused = null;
   } else {
     // Mobile: dacă nu e deschis explicit, marchează ca ascuns
     if (!isOpen) {

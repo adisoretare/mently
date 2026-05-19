@@ -127,6 +127,14 @@ export function init(canvas) {
     resizeFrame = requestAnimationFrame(resizeToContainer);
   }, { passive: true });
 
+  // Reheat la revenirea pe tab — nodurile s-au putut mișca (adăugări, ștergeri) cât
+  // tabul era ascuns iar loop-ul era oprit (document.hidden gate în funcția loop()).
+  // DE CE α=0.3: suficient să repozitioneze noduri noi fără să destabilizeze un
+  // graf deja conversat. Valoare de la 1.0 (haos) scade exponențial la fiecare tick.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) reheat(sim, 0.3);
+  });
+
   // Pornește bucla
   requestAnimationFrame(loop);
 }
@@ -153,8 +161,11 @@ function refreshFromStore() {
 /* ─────────────────────────── Render loop ─────────────────────────── */
 
 function loop() {
-  tick(sim, edges);
-  render();
+  // Sari tick + render când tab-ul e ascuns (browser throttlează rAF, dar economisim și mai mult)
+  if (!document.hidden) {
+    if (sim.nodes.size > 0) tick(sim, edges);
+    render();
+  }
   requestAnimationFrame(loop);
 }
 

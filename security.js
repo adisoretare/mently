@@ -59,9 +59,10 @@ export const TAG_REGEX = /^[a-z0-9\u00e0-\u017f][a-z0-9\u00e0-\u017f_-]{0,31}$/;
 
 /** Eroare custom pentru cazuri de securitate — separabilă în catch. */
 export class SecurityError extends Error {
-  constructor(message) {
+  constructor(message, code = null) {
     super(message);
     this.name = 'SecurityError';
+    if (code) this.code = code;
   }
 }
 

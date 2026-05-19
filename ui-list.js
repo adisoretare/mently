@@ -17,9 +17,9 @@
  */
 
 import { t } from './i18n.js';
-import { getNotes, deleteNote, clearAll, getNoteById } from './store.js';
+import { getNotes, deleteNote, clearAll, getNoteById, exportJSON, replaceNotes } from './store.js';
 import { announce } from './dom.js';
-import { escapeHtml } from './security.js';
+import { escapeHtml, parseAndValidateImport, LIMITS } from './security.js';
 
 let containerEl = null;
 let selectedId = null;
@@ -27,6 +27,10 @@ let activeTag = null;
 
 let clearAllArmed = false;
 let clearAllTimer = null;
+let importError = null;
+let importErrorTimer = null;
+let armedDeleteId = null;
+let armedDeleteTimer = null;
 
 const selectListeners = new Set();
 const tagClickListeners = new Set();
@@ -48,6 +52,7 @@ export function render(notes) {
     selectedId = null;
     activeTag = null;
     disarmClearAll();
+    disarmDelete();
     return;
   }
 
@@ -109,7 +114,7 @@ function renderEmpty() {
   return `
     <section aria-label="${escapeHtml(t.list.heading)}" class="bg-ink-900/40 border border-dashed border-ink-800 rounded-md p-5">
       <p class="font-display italic text-2xl text-paper-300 leading-snug">
-        Empty mind, full potential.
+        ${escapeHtml(t.list.emptyHero)}
       </p>
       <p class="mt-2 text-sm text-paper-500/90 leading-relaxed">
         ${escapeHtml(t.list.empty)}
@@ -121,7 +126,7 @@ function renderEmpty() {
 function renderActiveFilter(tag) {
   return `
     <div class="mb-3 flex items-center gap-2 px-3 py-2 bg-signal-400/10 border border-signal-400/30 rounded-md">
-      <span class="text-[10px] uppercase tracking-wider text-signal-300/80">Filtru</span>
+      <span class="text-[10px] uppercase tracking-wider text-signal-300/80">${escapeHtml(t.list.filterLabel)}</span>
       <span class="text-xs font-mono text-signal-300">${escapeHtml(tag)}</span>
       <button
         type="button"
@@ -149,7 +154,7 @@ function renderCard(note) {
     <li>
       <article
         data-note-id="${escapeHtml(note.id)}"
-        class="group relative bg-ink-900/70 border ${borderClass} rounded-md p-3 pr-3 cursor-pointer transition-colors focus-within:border-signal-400"
+        class="group relative bg-ink-900/70 border ${borderClass} rounded-md p-3 pr-3 cursor-pointer transition-colors"
         tabindex="0"
         role="button"
         aria-pressed="${ariaSelected}"
@@ -187,8 +192,9 @@ function renderCard(note) {
             type="button"
             data-action="delete"
             data-note-id="${escapeHtml(note.id)}"
-            class="text-paper-500 hover:text-red-400 focus-visible:text-red-400 p-1 rounded"
-            aria-label="${escapeHtml(t.list.deleteLabel(note.title))}"
+            class="${note.id === armedDeleteId ? 'text-red-400 animate-pulse' : 'text-paper-500 hover:text-red-400 focus-visible:text-red-400'} p-1 rounded"
+            aria-label="${escapeHtml(note.id === armedDeleteId ? t.list.deleteConfirm : t.list.deleteLabel(note.title))}"
+            aria-pressed="${note.id === armedDeleteId}"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/>
@@ -220,28 +226,50 @@ function renderTagChip(tag) {
 }
 
 function renderClearAll() {
-  if (clearAllArmed) {
-    return `
-      <div class="mt-6 pt-4 border-t border-ink-800/40 text-center">
-        <button
-          type="button"
-          data-action="clear-all-confirm"
-          class="text-[11px] text-red-400 hover:text-red-300 font-medium underline underline-offset-2 animate-pulse"
-        >
-          ${escapeHtml(t.list.clearAllConfirm)}
-        </button>
-      </div>
-    `;
-  }
-  return `
-    <div class="mt-6 pt-4 border-t border-ink-800/40 text-center">
-      <button
+  const clearAllBtn = clearAllArmed
+    ? `<button
+        type="button"
+        data-action="clear-all-confirm"
+        class="text-[10px] text-red-400 hover:text-red-300 font-medium underline underline-offset-2 animate-pulse"
+        aria-pressed="true"
+      >${escapeHtml(t.list.clearAllConfirm)}</button>`
+    : `<button
         type="button"
         data-action="clear-all"
         class="text-[10px] text-paper-500/70 hover:text-red-400 underline underline-offset-2 transition-colors"
-      >
-        ${escapeHtml(t.list.clearAll)}
-      </button>
+        aria-pressed="false"
+      >${escapeHtml(t.list.clearAll)}</button>`;
+
+  return `
+    <div class="mt-6 pt-4 border-t border-ink-800/40">
+      ${importError ? `<p class="text-xs text-red-400 text-center mb-3" role="alert">${escapeHtml(importError)}</p>` : ''}
+      <div class="flex items-center justify-center gap-5">
+        <button
+          type="button"
+          data-action="export"
+          class="flex items-center gap-1 text-[10px] text-paper-500/70 hover:text-paper-300 underline underline-offset-2 transition-colors"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          ${escapeHtml(t.list.exportBtn)}
+        </button>
+        <button
+          type="button"
+          data-action="import"
+          class="flex items-center gap-1 text-[10px] text-paper-500/70 hover:text-paper-300 underline underline-offset-2 transition-colors"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 5 17 10"/>
+            <line x1="12" y1="5" x2="12" y2="17"/>
+          </svg>
+          ${escapeHtml(t.list.importBtn)}
+        </button>
+        ${clearAllBtn}
+      </div>
     </div>
   `;
 }
@@ -255,6 +283,20 @@ function handleClick(e) {
     activeTag = null;
     notifyTag(null);
     render(getNotes());
+    return;
+  }
+
+  // Export
+  if (e.target.closest('[data-action="export"]')) {
+    e.stopPropagation();
+    handleExport();
+    return;
+  }
+
+  // Import
+  if (e.target.closest('[data-action="import"]')) {
+    e.stopPropagation();
+    handleImport();
     return;
   }
 
@@ -283,15 +325,23 @@ function handleClick(e) {
     return;
   }
 
-  // Delete
+  // Delete (2-click confirm)
   const deleteBtn = e.target.closest('[data-action="delete"]');
   if (deleteBtn) {
     e.stopPropagation();
     const id = deleteBtn.dataset.noteId;
     const note = getNoteById(id);
     if (!note) return;
-    deleteNote(id);
-    announce(t.a11y.noteDeleted(note.title));
+
+    if (armedDeleteId === id) {
+      // Al doilea click — confirmă ștergerea
+      disarmDelete();
+      deleteNote(id);
+      announce(t.a11y.noteDeleted(note.title));
+    } else {
+      // Primul click — armează
+      armDelete(id, note.title);
+    }
     return;
   }
 
@@ -322,6 +372,88 @@ function handleKeydown(e) {
   toggleSelect(card.dataset.noteId);
 }
 
+/* ─────────────────────────── Export / Import ─────────────────────────── */
+
+function handleExport() {
+  const json = exportJSON();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mently-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  announce(t.a11y.exported);
+}
+
+function handleImport() {
+  // Elementul nu trebuie adăugat în DOM pentru a putea primi click() — evităm leak-ul pe cancel
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    if (file.size > LIMITS.JSON_IMPORT_MAX_BYTES) {
+      setImportError(t.errors.importTooLarge);
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const { notes, importedCount, skippedCount } = parseAndValidateImport(text);
+      replaceNotes(notes);
+      announce(t.a11y.imported(importedCount, skippedCount));
+      clearImportError();
+    } catch (err) {
+      setImportError(t.errors.importFailed(err.message));
+    }
+  });
+
+  fileInput.click();
+}
+
+function setImportError(msg) {
+  importError = msg;
+  if (importErrorTimer) clearTimeout(importErrorTimer);
+  importErrorTimer = setTimeout(() => {
+    importError = null;
+    importErrorTimer = null;
+    render(getNotes());
+  }, 6000);
+  render(getNotes());
+}
+
+function clearImportError() {
+  importError = null;
+  if (importErrorTimer) { clearTimeout(importErrorTimer); importErrorTimer = null; }
+}
+
+/* ─────────────────────────── Delete — armed/confirm pattern ─────────────────────────── */
+
+function armDelete(id, title) {
+  armedDeleteId = id;
+  announce(t.a11y.deleteArmed(title));
+  render(getNotes());
+  if (armedDeleteTimer) clearTimeout(armedDeleteTimer);
+  armedDeleteTimer = setTimeout(() => {
+    if (armedDeleteId === id) {
+      disarmDelete();
+      render(getNotes());
+    }
+  }, 3000);
+}
+
+function disarmDelete() {
+  armedDeleteId = null;
+  if (armedDeleteTimer) {
+    clearTimeout(armedDeleteTimer);
+    armedDeleteTimer = null;
+  }
+}
+
 /* ─────────────────────────── Clear All — armed/confirm pattern ─────────────────────────── */
 
 function armClearAll() {
@@ -348,6 +480,9 @@ function disarmClearAll() {
 /* ─────────────────────────── Selection helpers ─────────────────────────── */
 
 function toggleSelect(id) {
+  // Click pe un alt card dezarmează confirmarea de ștergere — userul s-a răzgândit.
+  // Fără asta, selectarea unui card diferit lăsa butonul roșu "armat" vizibil pe cardul anterior.
+  if (armedDeleteId && armedDeleteId !== id) disarmDelete();
   selectedId = selectedId === id ? null : id;
   if (selectedId) {
     const note = getNoteById(selectedId);
