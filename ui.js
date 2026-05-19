@@ -306,8 +306,12 @@ function handleStateChange() {
     const isEmpty = notes.length === 0;
     placeholderEl.style.opacity = isEmpty ? '1' : '0';
     placeholderEl.style.transition = 'opacity 0.5s var(--ease-out-soft)';
-    // opacity:0 nu ascunde elementul de screen readere — aria-hidden e necesar explicit
     placeholderEl.setAttribute('aria-hidden', isEmpty ? 'false' : 'true');
+    // Keep placeholder text in sync with active language
+    const h = placeholderEl.querySelector('p:first-child');
+    const p = placeholderEl.querySelector('p:last-child');
+    if (h) h.textContent = t.meta.blank;
+    if (p) p.textContent = t.meta.blankHint;
   }
 }
 
