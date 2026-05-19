@@ -125,6 +125,9 @@ const ro = {
     canvasRegion: 'Vizualizarea grafului de cunoștințe',
     statsRegion: 'Statistici graf',
     formRegion: 'Formular notițe',
+    // Mesaje pentru sistemul solar — când un nod devine soare temporar prin selecție.
+    sunPromoted: (title) => `Centrul vizualizării este acum nodul "${title}".`,
+    sunReset: 'Centrul vizualizării a revenit la nodul cel mai conectat.',
   },
 
   meta: {

@@ -112,11 +112,14 @@ export function setActiveTag(tag) {
 
 function renderEmpty() {
   return `
-    <section aria-label="${escapeHtml(t.list.heading)}" class="bg-ink-900/40 border border-dashed border-ink-800 rounded-md p-5">
-      <p class="font-display italic text-2xl text-paper-300 leading-snug">
-        ${escapeHtml(t.list.emptyHero)}
-      </p>
-      <p class="mt-2 text-sm text-paper-500/90 leading-relaxed">
+    <section aria-label="${escapeHtml(t.list.heading)}" class="bg-ink-900/30 border border-dashed border-ink-800/80 rounded-2xl p-6 text-center">
+      <!-- animate-float definit în style.css — oscilație lentă, dezactivat la reduced-motion -->
+      <div class="animate-float inline-block">
+        <p class="font-display italic text-2xl text-paper-300/80 leading-snug">
+          ${escapeHtml(t.list.emptyHero)}
+        </p>
+      </div>
+      <p class="mt-3 text-xs text-paper-500/70 leading-relaxed">
         ${escapeHtml(t.list.empty)}
       </p>
     </section>
@@ -147,14 +150,16 @@ function renderCard(note) {
   const hasContent = !!note.content;
   const hasTags = Array.isArray(note.tags) && note.tags.length > 0;
 
-  const borderClass = isSelected ? 'border-signal-400' : 'border-ink-800 hover:border-ink-700';
+  const borderClass = isSelected
+    ? 'border-signal-400/70 bg-ink-800/50'
+    : 'border-ink-800 hover:border-ink-700';
   const ariaSelected = isSelected ? 'true' : 'false';
 
   return `
     <li>
       <article
         data-note-id="${escapeHtml(note.id)}"
-        class="group relative bg-ink-900/70 border ${borderClass} rounded-md p-3 pr-3 cursor-pointer transition-colors"
+        class="mently-card group relative bg-ink-900/60 border ${borderClass} rounded-xl p-3 pr-3 cursor-pointer"
         tabindex="0"
         role="button"
         aria-pressed="${ariaSelected}"
@@ -210,14 +215,14 @@ function renderTagChip(tag) {
   const isActive = tag === activeTag;
   const className = isActive
     ? 'bg-signal-400/20 text-signal-300 border-signal-400/50'
-    : 'bg-ink-800 text-paper-300 border-ink-700 hover:border-signal-400/40 hover:text-signal-300';
+    : 'bg-ink-800/80 text-paper-500 border-ink-700/60 hover:border-signal-400/40 hover:text-signal-300 hover:bg-ink-700/50';
 
   return `
     <li>
       <button
         type="button"
         data-tag="${escapeHtml(tag)}"
-        class="text-[10px] font-mono px-1.5 py-0.5 rounded border ${className} transition-colors focus-visible:outline-none focus-visible:border-signal-400"
+        class="mently-btn text-[10px] font-mono px-2 py-0.5 rounded-full border ${className} focus-visible:outline-none focus-visible:border-signal-400"
         aria-label="${escapeHtml(t.list.tagFilterLabel(tag))}"
         aria-pressed="${isActive ? 'true' : 'false'}"
       >${escapeHtml(tag)}</button>
@@ -230,24 +235,24 @@ function renderClearAll() {
     ? `<button
         type="button"
         data-action="clear-all-confirm"
-        class="text-[10px] text-red-400 hover:text-red-300 font-medium underline underline-offset-2 animate-pulse"
+        class="mently-btn text-[10px] text-red-400 hover:text-red-300 font-medium underline underline-offset-2 animate-pulse"
         aria-pressed="true"
       >${escapeHtml(t.list.clearAllConfirm)}</button>`
     : `<button
         type="button"
         data-action="clear-all"
-        class="text-[10px] text-paper-500/70 hover:text-red-400 underline underline-offset-2 transition-colors"
+        class="mently-btn text-[10px] text-paper-500/60 hover:text-red-400 underline underline-offset-2 transition-colors"
         aria-pressed="false"
       >${escapeHtml(t.list.clearAll)}</button>`;
 
   return `
-    <div class="mt-6 pt-4 border-t border-ink-800/40">
+    <div class="mt-6 pt-4 border-t border-ink-800/30">
       ${importError ? `<p class="text-xs text-red-400 text-center mb-3" role="alert">${escapeHtml(importError)}</p>` : ''}
       <div class="flex items-center justify-center gap-5">
         <button
           type="button"
           data-action="export"
-          class="flex items-center gap-1 text-[10px] text-paper-500/70 hover:text-paper-300 underline underline-offset-2 transition-colors"
+          class="mently-btn flex items-center gap-1.5 text-[10px] text-paper-500/60 hover:text-paper-300 transition-colors"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -259,7 +264,7 @@ function renderClearAll() {
         <button
           type="button"
           data-action="import"
-          class="flex items-center gap-1 text-[10px] text-paper-500/70 hover:text-paper-300 underline underline-offset-2 transition-colors"
+          class="mently-btn flex items-center gap-1.5 text-[10px] text-paper-500/60 hover:text-paper-300 transition-colors"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>

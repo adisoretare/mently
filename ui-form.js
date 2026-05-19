@@ -157,7 +157,7 @@ function template() {
           autocomplete="off"
           spellcheck="false"
           placeholder="${escapeHtml(t.form.titlePlaceholder)}"
-          class="w-full bg-ink-950/60 border border-ink-800 rounded-md px-3 py-2 text-sm text-paper-100 placeholder-paper-500/40 focus:border-signal-400 outline-none transition-colors"
+          class="mently-input w-full bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors"
           aria-required="true"
           aria-describedby="title-error"
           aria-invalid="false"
@@ -176,7 +176,7 @@ function template() {
           rows="3"
           maxlength="${LIMITS.CONTENT_MAX_LENGTH}"
           placeholder="${escapeHtml(t.form.contentPlaceholder)}"
-          class="w-full bg-ink-950/60 border border-ink-800 rounded-md px-3 py-2 text-sm text-paper-100 placeholder-paper-500/40 focus:border-signal-400 outline-none transition-colors resize-none"
+          class="mently-input w-full bg-ink-950/50 border border-ink-800 rounded-xl px-3 py-2 text-sm text-paper-100 placeholder-paper-500/30 outline-none transition-colors resize-none"
         ></textarea>
       </div>
 
@@ -186,7 +186,7 @@ function template() {
         </label>
         <div
           id="tag-chips-wrap"
-          class="flex flex-wrap items-center gap-1.5 bg-ink-950/60 border border-ink-800 rounded-md px-2 py-1.5 min-h-[42px] focus-within:border-signal-400 transition-colors cursor-text"
+          class="mently-input flex flex-wrap items-center gap-1.5 bg-ink-950/50 border border-ink-800 rounded-xl px-2 py-1.5 min-h-[42px] transition-colors cursor-text"
           role="group"
           aria-label="${escapeHtml(t.form.tagsAddedLabel)}"
         >
@@ -211,14 +211,14 @@ function template() {
         <button
           id="note-submit"
           type="submit"
-          class="flex-1 bg-signal-400 hover:bg-signal-300 active:bg-signal-500 text-ink-950 font-medium text-sm py-2.5 rounded-md transition-colors"
+          class="mently-btn flex-1 bg-gradient-to-b from-signal-300 to-signal-400 hover:from-signal-400 hover:to-signal-500 text-ink-950 font-semibold text-sm py-2.5 rounded-xl shadow-sm transition-all"
         >
           ${escapeHtml(t.form.submitAdd)}
         </button>
         <button
           id="note-cancel"
           type="button"
-          class="hidden px-4 bg-ink-800 hover:bg-ink-700 text-paper-300 hover:text-paper-100 font-medium text-sm py-2.5 rounded-md transition-colors"
+          class="mently-btn hidden px-4 bg-ink-800/80 hover:bg-ink-700 border border-ink-700 hover:border-ink-600 text-paper-500 hover:text-paper-300 font-medium text-sm py-2.5 rounded-xl transition-all"
         >
           ${escapeHtml(t.form.cancel)}
         </button>
@@ -306,7 +306,7 @@ function renderChips() {
   tags.forEach((tag, idx) => {
     const chip = document.createElement('span');
     chip.dataset.chip = idx;
-    chip.className = 'inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-full bg-signal-400/15 text-signal-300 border border-signal-400/30';
+    chip.className = 'inline-flex items-center gap-1 text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-signal-400/12 text-signal-300 border border-signal-400/25 select-none';
     chip.innerHTML = `
       <span>${escapeHtml(tag)}</span>
       <button

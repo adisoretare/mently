@@ -202,19 +202,144 @@ export function getTagFrequency(notes) {
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
+/* ─────────────────────────── Sistemul solar — soare + adâncimi ─────────────────────────── */
+
+/**
+ * Returnează gradul unui nod (numărul de vecini).
+ * @param {Map<string, Set<string>>} adjacency
+ * @param {string} id
+ * @returns {number}
+ */
+function degreeOf(adjacency, id) {
+  const neighbors = adjacency.get(id);
+  return neighbors ? neighbors.size : 0;
+}
+
+/**
+ * Găsește "soarele" unei componente — nodul cu cel mai mare grad.
+ * La egalitate, alege id-ul cel mai mic (lexicografic) pentru stabilitate —
+ * altfel soarele ar "sări" între noduri la fiecare rebuild dacă două noduri
+ * au același grad.
+ *
+ * @param {Set<string>} componentIds
+ * @param {Map<string, Set<string>>} adjacency
+ * @returns {string} id-ul soarelui
+ */
+function findSun(componentIds, adjacency) {
+  let sun = null;
+  let maxDeg = -1;
+  for (const id of componentIds) {
+    const deg = degreeOf(adjacency, id);
+    // Aleg nodul cu grad maxim; la egalitate, id-ul lexicografic mai mic câștigă
+    if (deg > maxDeg || (deg === maxDeg && (sun === null || id < sun))) {
+      maxDeg = deg;
+      sun = id;
+    }
+  }
+  return sun;
+}
+
+/**
+ * BFS din soare → adâncimi + numărul de copii direcți în arborele BFS.
+ *
+ * "Copil direct" = vecin cu adâncimea exact depth(curr)+1.
+ * Părintele și colegii de pe același nivel NU se numără.
+ * Asta e sursa de adevăr pentru dimensionarea nodurilor: un hub care
+ * ramifică mult va fi mai mare decât un nod cu multe cross-links la același nivel.
+ *
+ * DE CE BFS și nu DFS: BFS garantează adâncimea minimă (calea cea mai scurtă).
+ * Cu DFS ai putea obține adâncimi arbitrare la noduri bine conectate.
+ *
+ * @param {string} sunId
+ * @param {Map<string, Set<string>>} adjacency
+ * @returns {{ depths: Map<string, number>, childCounts: Map<string, number> }}
+ */
+function computeDepths(sunId, adjacency) {
+  const depths = new Map([[sunId, 0]]);
+  const childCounts = new Map();
+  const queue = [sunId];
+  while (queue.length) {
+    const curr = queue.shift();
+    const d = depths.get(curr);
+    let kids = 0;
+    const neighbors = adjacency.get(curr);
+    if (neighbors) {
+      for (const n of neighbors) {
+        if (!depths.has(n)) {
+          depths.set(n, d + 1);
+          queue.push(n);
+          kids++;
+        }
+      }
+    }
+    childCounts.set(curr, kids);
+  }
+  return { depths, childCounts };
+}
+
 /* ─────────────────────────── Aggregator ─────────────────────────── */
 
 /**
  * Construiește modelul complet într-o singură trecere.
- * Apelat de ui.js / render-ul Canvas → o singură poartă.
+ * Apelat de canvas.js / ui.js la fiecare mutație de store.
+ *
+ * `sunOverrideId` — dacă utilizatorul a selectat un nod, îl promovăm
+ * temporar ca soare al componentei sale. Adâncimile se recalculează din el.
+ * Asta dă grafului o perspectivă subiectivă: "cum arată lumea din acest nod?"
  *
  * @param {Array<Note>} notes
- * @returns {{nodes: Array, edges: Edge[], adjacency: Map, tagFrequency: Array, components: Array<Set<string>>}}
+ * @param {string|null} sunOverrideId  id-ul nodului selectat (sau null)
+ * @returns {{
+ *   nodes: Array, edges: Edge[], adjacency: Map,
+ *   tagFrequency: Array, components: Array<Set<string>>,
+ *   componentIndexById: Map<string, number>,
+ *   sunIds: Set<string>,
+ *   depths: Map<string, number>,
+ *   childCounts: Map<string, number>
+ * }}
  */
-export function buildGraphModel(notes) {
+export function buildGraphModel(notes, sunOverrideId = null) {
   const edges = buildEdges(notes);
   const adjacency = buildAdjacency(edges);
   const tagFrequency = getTagFrequency(notes);
   const components = allConnectedComponents(notes, adjacency);
-  return { nodes: notes, edges, adjacency, tagFrequency, components };
+
+  const sunIds = new Set();
+  const depths = new Map();
+  const childCounts = new Map();
+  const componentIndexById = new Map();
+
+  for (let idx = 0; idx < components.length; idx++) {
+    const comp = components[idx];
+
+    // Fiecare nod primește indexul componentei sale — folosit pentru rotația de paletă.
+    for (const id of comp) componentIndexById.set(id, idx);
+
+    // Dacă nodul selectat aparține acestei componente, îl promovăm ca soare.
+    // Altfel, folosim nodul cu gradul maxim (cel mai conectat = natural dominant).
+    let sun;
+    if (sunOverrideId && comp.has(sunOverrideId)) {
+      sun = sunOverrideId;
+    } else {
+      sun = findSun(comp, adjacency);
+    }
+
+    sunIds.add(sun);
+
+    // BFS adâncimi + copii direcți din soare — acoperă toată componenta
+    const { depths: compDepths, childCounts: compChildCounts } = computeDepths(sun, adjacency);
+    for (const [id, d] of compDepths) depths.set(id, d);
+    for (const [id, c] of compChildCounts) childCounts.set(id, c);
+  }
+
+  // Nodurile complet izolate (fără nicio muchie) nu apar în adjacency →
+  // nu au primit adâncime/copii din BFS. Le asignăm 0: sunt propriul lor soare, fără copii.
+  for (const note of notes) {
+    if (!depths.has(note.id)) {
+      depths.set(note.id, 0);
+      childCounts.set(note.id, 0);
+    }
+  }
+
+  return { nodes: notes, edges, adjacency, tagFrequency, components, componentIndexById, sunIds, depths, childCounts };
 }

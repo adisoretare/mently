@@ -22,6 +22,24 @@
   --c-signal-300: #fdba74;
   --c-signal-500: #f97316;
 
+  /* Paletă extinsă pentru sistemul solar — culori per familie de planete.
+     Definite ca CSS vars (nu clase Tailwind) → canvas.js le citește via loadPalette(). */
+  --c-azure-300: #7dd3fc;   /* albastru gheață deschis  */
+  --c-azure-400: #38bdf8;   /* albastru viu             */
+  --c-azure-500: #0ea5e9;   /* albastru profund         */
+  --c-aurora-300: #c4b5fd;  /* violet lavandă           */
+  --c-aurora-400: #a78bfa;  /* violet viu               */
+  --c-aurora-500: #7c3aed;  /* violet profund           */
+  --c-jade-300: #6ee7b7;    /* verde mentă              */
+  --c-jade-400: #34d399;    /* verde smarald            */
+  --c-jade-500: #10b981;    /* verde profund            */
+  --c-crimson-300: #fca5a5; /* roșu deschis             */
+  --c-crimson-400: #f87171; /* roșu viu                 */
+  --c-crimson-500: #ef4444; /* roșu profund (Mars)      */
+  --c-gold-300: #fcd34d;    /* galben deschis           */
+  --c-gold-400: #fbbf24;    /* galben-auriu             */
+  --c-gold-500: #f59e0b;    /* auriu profund            */
+
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-snap: cubic-bezier(0.65, 0, 0.35, 1);
 
@@ -176,3 +194,63 @@ body {
 .animate-fade-up {
   animation: mently-fade-up 0.6s var(--ease-out-soft) both;
 }
+
+/* ───────── 13. Canvas placeholder — levitație lentă ─────────
+   Animația "float" dă viață ecranului gol fără să distragă.
+   Dezactivată automat de blocked-ul de reducere mișcare de mai sus.
+*/
+@keyframes mently-float {
+  0%, 100% { transform: translateY(0px);  }
+  50%       { transform: translateY(-11px); }
+}
+.animate-float {
+  animation: mently-float 6s ease-in-out infinite;
+}
+
+/* ───────── 14. Input culori + glow la focus ─────────
+   Tailwind CDN JIT poate rata clasele custom (text-paper-100, bg-ink-950/50)
+   pe elementele injectate dinamic prin innerHTML. Declarăm culorile via CSS vars
+   direct pe .mently-input — sursa de adevăr e style.css, nu JIT-ul Tailwind.
+*/
+.mently-input {
+  background-color: rgba(12, 10, 9, 0.5); /* ink-950 la 50% */
+  color: var(--c-paper-100);
+}
+.mently-input::placeholder {
+  color: rgba(168, 162, 158, 0.35); /* paper-500 la 35% */
+}
+.mently-input:focus,
+.mently-input:focus-within {
+  border-color: var(--c-signal-400) !important;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.12);
+  outline: none;
+}
+/* Inputul din interiorul tag-wrap moștenește culoarea corect */
+.mently-input input {
+  color: var(--c-paper-100);
+}
+.mently-input input::placeholder {
+  color: rgba(168, 162, 158, 0.4);
+}
+
+/* ───────── 15. Card hover — lift micro-animație ─────────
+   translateY(-2px) dă senzația că cardul "se ridică" la hover.
+   Active resetează la 0 → senzație de apăsare fizică.
+*/
+.mently-card {
+  transition: transform 140ms var(--ease-out-soft),
+              border-color 140ms ease,
+              background-color 140ms ease;
+}
+.mently-card:hover  { transform: translateY(-2px); }
+.mently-card:active { transform: translateY(0px);  }
+
+/* ───────── 16. Butoane — press feedback ─────────
+   Scale mic la apăsare → senzație tactilă pe orice buton cu .mently-btn.
+*/
+.mently-btn {
+  transition: transform 100ms var(--ease-out-soft),
+              background-color 150ms ease,
+              color 150ms ease;
+}
+.mently-btn:active { transform: scale(0.97); }

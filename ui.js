@@ -69,8 +69,9 @@ export function init() {
     }
   });
   Canvas.onSelect((id) => {
+    // Canvas are responsabilitatea anunțurilor pentru evenimentele de pe canvas
+    // (sunPromoted / sunReset). ui.js anunță doar pentru selecțiile din sidebar.
     List.setSelectedId(id);
-    if (!id) announce(t.a11y.selectionCleared);
   });
 
   // ─── Tag click sidebar → highlight componentă ───
@@ -98,10 +99,13 @@ function renderSidebarShell() {
     <div class="h-full flex flex-col animate-fade-up">
       <header class="flex items-start justify-between px-7 pt-8 pb-5 flex-shrink-0">
         <div>
-          <h1 class="font-display italic text-5xl leading-none tracking-tight">
-            ${escapeHtml(t.brand)}<span class="text-signal-400">.</span>
+          <!-- Gradient text: alb curat → ușor cald — mai multă personalitate fără să rupă paleta -->
+          <h1 class="font-display italic text-5xl leading-none tracking-tight select-none">
+            <span style="background:linear-gradient(to bottom right,var(--c-paper-100),var(--c-paper-300));-webkit-background-clip:text;background-clip:text;color:transparent">
+              ${escapeHtml(t.brand)}
+            </span><span class="text-signal-400">.</span>
           </h1>
-          <p class="mt-2 text-[10px] uppercase tracking-[0.22em] text-paper-500/80">
+          <p class="mt-2 text-[10px] uppercase tracking-[0.26em] text-paper-500/60">
             ${escapeHtml(t.tagline)}
           </p>
         </div>
@@ -154,9 +158,11 @@ function handleStateChange() {
 
 function statCard(label, value) {
   return `
-    <div class="bg-ink-900/70 border border-ink-800 rounded-md px-2 py-2 text-center">
-      <div class="text-[9px] uppercase tracking-[0.12em] text-paper-500/70">${escapeHtml(label)}</div>
-      <div class="font-mono text-base text-paper-100 mt-0.5 tabular-nums">${value}</div>
+    <div class="relative bg-ink-900/60 border border-ink-800 rounded-xl px-2 py-2.5 text-center overflow-hidden group hover:border-ink-700 transition-colors cursor-default">
+      <!-- Linie de accent subtilă în partea de sus — sugerează că cardul e "activ" -->
+      <div class="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-signal-400/25 to-transparent"></div>
+      <div class="text-[9px] uppercase tracking-[0.14em] text-paper-500/60 group-hover:text-paper-500/80 transition-colors">${escapeHtml(label)}</div>
+      <div class="font-mono text-lg text-paper-100 mt-0.5 tabular-nums leading-none">${value}</div>
     </div>
   `;
 }
