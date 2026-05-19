@@ -145,7 +145,7 @@ function renderActiveFilter(tag) {
   `;
 }
 
-function renderCard(note) {
+export function renderCard(note) {
   const isSelected = note.id === selectedId;
   const hasContent = !!note.content;
   const hasTags = Array.isArray(note.tags) && note.tags.length > 0;
@@ -155,17 +155,27 @@ function renderCard(note) {
     : 'border-ink-800 hover:border-ink-700';
   const ariaSelected = isSelected ? 'true' : 'false';
 
+  const doneClass = note.done ? ' done' : '';
+
   return `
     <li>
       <article
         data-note-id="${escapeHtml(note.id)}"
-        class="mently-card group relative bg-ink-900/60 border ${borderClass} rounded-xl p-3 pr-3 cursor-pointer"
+        class="mently-card group relative bg-ink-900/60 border ${borderClass} rounded-xl p-3 pr-3 cursor-pointer${doneClass}"
         tabindex="0"
         role="button"
         aria-pressed="${ariaSelected}"
         aria-label="${escapeHtml(t.list.selectLabel(note.title))}"
       >
-        <h3 class="text-sm font-medium text-paper-100 leading-snug pr-14">${escapeHtml(note.title)}</h3>
+        <div class="flex items-center gap-1.5">
+          ${note.isTask ? `
+            <span class="note-task-badge ${note.done ? 'note-task-badge--done' : ''}" aria-hidden="true">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${note.done ? '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>' : '<rect x="3" y="3" width="18" height="18" rx="2"/>'}
+              </svg>
+            </span>
+          ` : ''}
+          <h3 class="mently-card-title text-sm font-medium text-paper-100 leading-snug pr-14">${escapeHtml(note.title)}</h3>
+        </div>
 
         ${hasContent ? `
           <p class="mt-1 text-xs text-paper-500/90 leading-relaxed line-clamp-2">
@@ -211,7 +221,7 @@ function renderCard(note) {
   `;
 }
 
-function renderTagChip(tag) {
+export function renderTagChip(tag) {
   const isActive = tag === activeTag;
   const className = isActive
     ? 'bg-signal-400/20 text-signal-300 border-signal-400/50'
