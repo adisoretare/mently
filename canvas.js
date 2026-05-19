@@ -78,6 +78,7 @@ let depths = new Map();          // nodeId → adâncime față de soarele compo
 let sunIds = new Set();          // id-urile soarelui din fiecare componentă conexă
 let childCounts = new Map();     // nodeId → nr. copii direcți în arborele BFS (pentru sizing)
 let componentIndexById = new Map(); // nodeId → index componentă (pentru rotația de paletă)
+let hiddenIds = new Set();       // nodeId → hidden because ancestor is collapsed
 
 // Reducere mișcare — citit o singură dată la init, nu per-frame
 let motionOK = true;
@@ -97,6 +98,16 @@ let dragOffsetY = 0;
 let pointerDown = null; // { x, y, time, nodeId } pentru detectare click vs drag
 
 const selectListeners = new Set();
+
+// Viewport pan (for focus mode)
+let viewportX = 0;
+let viewportY = 0;
+let targetVX = 0;
+let targetVY = 0;
+const VIEWPORT_LERP = 0.12;
+
+// Spotlight (focus mode — dims all non-spotlight nodes)
+let spotlightId = null;
 
 /* ─────────────────────────── Paletă (din CSS custom properties) ─────────────────────────── */
 
@@ -326,6 +337,7 @@ function refreshFromStore() {
   sunIds           = model.sunIds;
   childCounts      = model.childCounts;
   componentIndexById = model.componentIndexById;
+  hiddenIds        = model.hiddenIds;
   nodesById        = new Map(notes.map((n) => [n.id, n]));
 
   if (sim) syncNodes(sim, notes);
@@ -343,6 +355,16 @@ function loop() {
   // Sari tick + render când tab-ul e ascuns (browser throttlează rAF, dar economisim și mai mult)
   if (!document.hidden) {
     if (sim.nodes.size > 0) tick(sim, edges);
+
+    // Lerp viewport toward target (for focus mode pan)
+    if (motionOK) {
+      viewportX += (targetVX - viewportX) * VIEWPORT_LERP;
+      viewportY += (targetVY - viewportY) * VIEWPORT_LERP;
+    } else {
+      viewportX = targetVX;
+      viewportY = targetVY;
+    }
+
     render();
   }
   requestAnimationFrame(loop);
@@ -355,18 +377,38 @@ function render() {
   const h = getLogicalHeight();
 
   // Clear pe transparent → texturile bg-grain + vignette din spate se văd
-  ctx.clearRect(0, 0, w, h);
+  ctx.clearRect(0, 0, w, h);  // clear before translate — covers full canvas
 
   const hasHighlight = highlightedIds !== null;
+  const hasSpotlight = spotlightId !== null;
+
+  ctx.save();
+  ctx.translate(viewportX, viewportY);
 
   // 0. Inele orbitale — cel mai de jos strat, înainte de muchii și noduri
   renderOrbitalRings();
 
   // 1. Edges (sub noduri)
   for (const edge of edges) {
+    if (hiddenIds.has(edge.source) || hiddenIds.has(edge.target)) continue;
     const A = sim.nodes.get(edge.source);
     const B = sim.nodes.get(edge.target);
     if (!A || !B) continue;
+
+    if (hasSpotlight) {
+      const touchesSpotlight = edge.source === spotlightId || edge.target === spotlightId;
+      if (!touchesSpotlight) {
+        ctx.globalAlpha = 0.08;
+        ctx.beginPath();
+        ctx.moveTo(A.x, A.y);
+        ctx.lineTo(B.x, B.y);
+        ctx.strokeStyle = PALETTE.ink800;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        continue;
+      }
+    }
 
     const isActive = !hasHighlight || (highlightedIds.has(edge.source) && highlightedIds.has(edge.target));
     const touchesSelected = selectedId && (edge.source === selectedId || edge.target === selectedId);
@@ -404,6 +446,7 @@ function render() {
 
   // 2. Nodes — cu tier-ul calculat din adâncime
   for (const [id, note] of nodesById) {
+    if (hiddenIds.has(id)) continue;
     const node = sim.nodes.get(id);
     if (!node) continue;
 
@@ -414,11 +457,17 @@ function render() {
     const isHighlighted = hasHighlight && highlightedIds.has(id);
     const isInactive    = hasHighlight && !isHighlighted;
 
-    ctx.globalAlpha = isInactive ? 0.2 : 1;
+    if (hasSpotlight) {
+      ctx.globalAlpha = id === spotlightId ? 1 : 0.15;
+    } else {
+      ctx.globalAlpha = isInactive ? 0.2 : 1;
+    }
 
     renderNode(node, note, id, childCount, depth, isSelected, isHovered, isHighlighted);
   }
   ctx.globalAlpha = 1;
+
+  ctx.restore();
 }
 
 /* ─────────────────────────── Inele orbitale (fundal) ─────────────────────────── */
@@ -523,6 +572,11 @@ function renderNode(node, note, id, childCount, depth, isSelected, isHovered, is
   const tier = depth === 0 ? 0 : depth === 1 ? 1 : depth === 2 ? 2 : 3;
   const r = nodeRadius(childCount, depth);
 
+  // done notes are dimmed
+  const baseAlpha = note.done ? 0.45 : 1;
+  const prevAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = prevAlpha * baseAlpha;
+
   // Pulsarea soarelui — variație lentă de ±4%; `currentPulseScale` returnează 1
   // dacă prefers-reduced-motion e activ. Același calcul e folosit și în findNodeAt
   // pentru sincronizarea hit-testingului cu vizualul.
@@ -549,6 +603,11 @@ function renderNode(node, note, id, childCount, depth, isSelected, isHovered, is
   if (showLabel) {
     renderNodeLabel(node, note, r, showProminentLabel);
   }
+
+  ctx.globalAlpha = prevAlpha;
+
+  // Badges: collapse indicator (top-right) and task/done (top-left)
+  renderNodeBadges(node, note, r, childCount);
 }
 
 /**
@@ -827,6 +886,92 @@ function renderNodeLabel(node, note, r, prominent) {
   }
 
   ctx.fillText(label, node.x, labelY);
+
+  // Strikethrough for done tasks
+  if (note.done) {
+    const metrics = ctx.measureText(label);
+    const midY = labelY + 6;
+    ctx.beginPath();
+    ctx.moveTo(node.x - metrics.width / 2, midY);
+    ctx.lineTo(node.x + metrics.width / 2, midY);
+    ctx.strokeStyle = prominent ? PALETTE.paper300 : PALETTE.paper500;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+/**
+ * Adornment badges drawn on top of node glyph.
+ * Top-left: task checkbox (filled if done).
+ * Top-right: collapse chip "+N" when children are hidden.
+ */
+function renderNodeBadges(node, note, r, childCount) {
+  const badgeR = 5;
+
+  // Task badge (top-left)
+  if (note.isTask) {
+    const bx = node.x - r * 0.65;
+    const by = node.y - r * 0.65;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
+    ctx.fillStyle = note.done ? PALETTE.jade400 : PALETTE.ink800;
+    ctx.fill();
+    ctx.strokeStyle = note.done ? PALETTE.jade500 : PALETTE.paper500;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (note.done) {
+      // Checkmark
+      ctx.beginPath();
+      ctx.moveTo(bx - 2.5, by);
+      ctx.lineTo(bx - 0.5, by + 2);
+      ctx.lineTo(bx + 2.5, by - 2);
+      ctx.strokeStyle = PALETTE.ink950;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Pinned-sun badge (bottom-right) — small star when isSun=true and node is NOT already sun by selection
+  if (note.isSun) {
+    const bx = node.x + r * 0.65;
+    const by = node.y + r * 0.65;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = PALETTE.gold400;
+    ctx.fillText('★', bx, by);
+    ctx.restore();
+  }
+
+  // Collapse badge (top-right) — only when collapsed and has direct children
+  if (note.collapsed && childCount > 0) {
+    const bx = node.x + r * 0.65;
+    const by = node.y - r * 0.65;
+    const label = `+${childCount}`;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.font = '500 8px Geist, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(label).width;
+    const pw = tw / 2 + 3;
+    ctx.fillStyle = PALETTE.signal400;
+    ctx.beginPath();
+    ctx.arc(bx, by, Math.max(pw, badgeR), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.ink950;
+    ctx.fillText(label, bx, by + 0.5);
+    ctx.restore();
+  }
 }
 
 /** Helper pentru colțuri rotunjite (pill labels). */
@@ -875,14 +1020,15 @@ function findNodeAt(x, y) {
   // Calculăm pulseScale o singură dată pentru tot loop-ul — aceeași valoare ca în render()
   const ps = currentPulseScale();
   for (const [id] of nodesById) {
+    if (hiddenIds.has(id)) continue;
     const node = sim.nodes.get(id);
     if (!node) continue;
     const depth = depths.get(id) ?? 0;
     const r = nodeRadius(childCounts.get(id) ?? 0, depth);
     // Soarele pulsează — hit-testingul folosește același factor ca vizualul
     const rVis = depth === 0 ? r * ps : r;
-    const dx = x - node.x;
-    const dy = y - node.y;
+    const dx = (x - viewportX) - node.x;
+    const dy = (y - viewportY) - node.y;
     const dist2 = dx * dx + dy * dy;
     const hitR = rVis + 4; // padding mic pentru confort la click
     if (dist2 <= hitR * hitR && dist2 < bestDist2) {
@@ -897,6 +1043,7 @@ function findNodeAt(x, y) {
 
 function handlePointerDown(e) {
   if (e.button !== undefined && e.button !== 0) return; // doar left click
+  if (spotlightId !== null) return; // focus mode active — disable all canvas interaction
   canvasEl.setPointerCapture?.(e.pointerId);
 
   const { x, y } = pointerToCanvas(e.clientX, e.clientY);
@@ -994,6 +1141,39 @@ export function setSelected(id) {
 
 export function getSelected()  { return selectedId; }
 
+/**
+ * Sets the spotlight node for focus mode. Dims all other nodes; pans viewport
+ * to center the target node. Pass null to exit spotlight.
+ */
+export function setSpotlight(id) {
+  spotlightId = id;
+  clearHighlight(); // focus wins over tag highlight
+
+  if (id) {
+    const node = sim && sim.nodes.get(id);
+    if (node) {
+      const w = getLogicalWidth();
+      const h = getLogicalHeight();
+      targetVX = w / 2 - node.x;
+      targetVY = h / 2 - node.y;
+    }
+  } else {
+    targetVX = 0;
+    targetVY = 0;
+  }
+}
+
+export function updateSpotlightTarget(id) {
+  if (!id || !sim) return;
+  const node = sim.nodes.get(id);
+  if (!node) return;
+  spotlightId = id;
+  const w = getLogicalWidth();
+  const h = getLogicalHeight();
+  targetVX = w / 2 - node.x;
+  targetVY = h / 2 - node.y;
+}
+
 export function onSelect(fn) {
   selectListeners.add(fn);
   return () => selectListeners.delete(fn);
@@ -1034,6 +1214,7 @@ function notifySelect() {
  * Re-click pe același tag → toggle off.
  */
 export function highlightByTag(tag) {
+  if (spotlightId !== null) return; // focus wins over tag highlight
   if (!tag) { clearHighlight(); return; }
   if (activeTag === tag) { clearHighlight(); return; }
 
@@ -1052,4 +1233,18 @@ export function getActiveTag() { return activeTag; }
 function clearHighlight() {
   highlightedIds = null;
   activeTag = null;
+}
+
+/**
+ * Returns the canvas-wrapper-relative CSS pixel position of a node.
+ * Used by ui-node-panel.js to anchor the floating panel.
+ * Returns null if node is hidden, not in sim, or canvas not mounted.
+ */
+export function getNodeScreenPosition(id) {
+  if (!canvasEl || !sim || hiddenIds.has(id)) return null;
+  const node = sim.nodes.get(id);
+  if (!node) return null;
+  const depth = depths.get(id) ?? 0;
+  const r = nodeRadius(childCounts.get(id) ?? 0, depth);
+  return { x: node.x + viewportX, y: node.y + viewportY, r };
 }
