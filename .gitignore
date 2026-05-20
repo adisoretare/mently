@@ -1,17 +1,2 @@
-# Claude Code / AI tooling
-.claude/
-.playwright-mcp/
-forClaude/
-claude.md
 
-# Contest documents (local only)
-RAPORT.md
-REFERAT.md
-
-# Debug artifacts
-*.png
-
-# OS
-desktop.ini
-.DS_Store
-Thumbs.db
+PREZENTARE.md
