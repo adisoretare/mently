@@ -1,9 +1,12 @@
 // Keyboard shortcuts overlay. Press '?' to open, Escape to close.
+// Dialog modal complet: focus trap (Tab ciclează în interior) + focus restore la închidere.
 
 import { t } from './i18n.js';
 import { escapeHtml } from './security.js';
+import { allFocusable } from './dom.js';
 
 let overlayEl = null;
+let previouslyFocused = null;
 
 export function init() {
   overlayEl = document.createElement('div');
@@ -16,6 +19,7 @@ export function init() {
 
   overlayEl.querySelector('#shortcuts-close').addEventListener('click', close);
   overlayEl.addEventListener('click', (e) => { if (e.target === overlayEl) close(); });
+  overlayEl.addEventListener('keydown', handleTrapKeydown);
 
   document.addEventListener('keydown', (e) => {
     if (overlayEl.classList.contains('hidden')) {
@@ -34,12 +38,39 @@ export function init() {
 }
 
 function open() {
+  previouslyFocused = document.activeElement;
   overlayEl.classList.remove('hidden');
   overlayEl.querySelector('#shortcuts-close').focus();
 }
 
 function close() {
   overlayEl.classList.add('hidden');
+  // Restituim focus-ul elementului care a deschis modalul (pattern ARIA dialog)
+  if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+    previouslyFocused.focus();
+  }
+  previouslyFocused = null;
+}
+
+/**
+ * Focus trap: cât timp modalul e deschis, Tab/Shift+Tab ciclează în interior.
+ * Același pattern ca în ui-drawer.js (handleSidebarKeydown).
+ */
+function handleTrapKeydown(e) {
+  if (overlayEl.classList.contains('hidden') || e.key !== 'Tab') return;
+  const focusables = allFocusable(overlayEl);
+  if (focusables.length === 0) return;
+
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 function isInputFocused() {
@@ -49,13 +80,13 @@ function isInputFocused() {
 
 function renderModal() {
   const rows = [
-    { desc: 'Shortcuts help',      keys: ['?'] },
-    { desc: 'Close / cancel',       keys: ['Esc'] },
-    { desc: 'Navigate elements',    keys: ['Tab', 'Shift+Tab'] },
-    { desc: 'Activate selected',    keys: ['Enter'] },
-    { desc: 'Focus mode — prev',    keys: ['←'] },
-    { desc: 'Focus mode — next',    keys: ['→'] },
-    { desc: 'Fullscreen toggle',    keys: ['F'] },
+    { desc: t.shortcuts.rows.help,       keys: ['?'] },
+    { desc: t.shortcuts.rows.close,      keys: ['Esc'] },
+    { desc: t.shortcuts.rows.navigate,   keys: ['Tab', 'Shift+Tab'] },
+    { desc: t.shortcuts.rows.activate,   keys: ['Enter'] },
+    { desc: t.shortcuts.rows.focusPrev,  keys: ['←'] },
+    { desc: t.shortcuts.rows.focusNext,  keys: ['→'] },
+    { desc: t.shortcuts.rows.fullscreen, keys: ['F'] },
   ];
 
   const rowsHtml = rows.map(({ desc, keys }) => `
@@ -68,8 +99,8 @@ function renderModal() {
   return `
     <div class="shortcuts-modal" role="document">
       <div class="shortcuts-modal-header">
-        <span id="shortcuts-title" class="shortcuts-modal-title">Keyboard Shortcuts</span>
-        <button id="shortcuts-close" class="shortcuts-modal-close" aria-label="Close shortcuts">
+        <span id="shortcuts-title" class="shortcuts-modal-title">${escapeHtml(t.shortcuts.title)}</span>
+        <button id="shortcuts-close" class="shortcuts-modal-close" aria-label="${escapeHtml(t.shortcuts.close)}">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>

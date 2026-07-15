@@ -147,8 +147,12 @@ function isValidEpoch(n) {
   return Number.isFinite(n) && n >= LIMITS.EPOCH_MIN && n <= LIMITS.EPOCH_MAX;
 }
 
-/** Verifică dacă un id e plauzibil (UUID-like sau string scurt cu caractere safe). */
-function isValidId(value) {
+/**
+ * Verifică dacă un id e plauzibil (UUID-like sau string scurt cu caractere safe).
+ * Exportat: folosit și de url-hash.js pentru validarea input-ului din URL —
+ * hash-ul e singurul input extern controlabil de un atacator (link partajat).
+ */
+export function isValidId(value) {
   return typeof value === 'string'
     && value.length > 0
     && value.length <= LIMITS.ID_MAX_LENGTH

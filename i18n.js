@@ -189,8 +189,17 @@ const ro = {
   },
 
   shortcuts: {
-    title: 'Keyboard shortcuts',
-    close: 'Close',
+    title: 'Scurtături de tastatură',
+    close: 'Închide',
+    rows: {
+      help: 'Ajutor scurtături',
+      close: 'Închide / anulează',
+      navigate: 'Navighează elementele',
+      activate: 'Activează selecția',
+      focusPrev: 'Mod focus — anterior',
+      focusNext: 'Mod focus — următor',
+      fullscreen: 'Ecran complet',
+    },
   },
 };
 
@@ -385,6 +394,15 @@ const en = {
   shortcuts: {
     title: 'Keyboard shortcuts',
     close: 'Close',
+    rows: {
+      help: 'Shortcuts help',
+      close: 'Close / cancel',
+      navigate: 'Navigate elements',
+      activate: 'Activate selected',
+      focusPrev: 'Focus mode — previous',
+      focusNext: 'Focus mode — next',
+      fullscreen: 'Fullscreen toggle',
+    },
   },
 };
 
@@ -394,7 +412,18 @@ let currentLang = 'ro';
 
 export function initLanguage() {
   const saved = localStorage.getItem(LANG_KEY);
-  if (saved && LANGS[saved]) currentLang = saved;
+  if (saved && LANGS[saved]) {
+    currentLang = saved;
+  } else if (typeof navigator !== 'undefined' && navigator.language) {
+    // Prima vizită fără preferință salvată: detectăm limba browserului.
+    // ro/ro-RO → română; orice altceva → engleză (fallback internațional).
+    currentLang = navigator.language.toLowerCase().startsWith('ro') ? 'ro' : 'en';
+  }
+  // <html lang> trebuie să reflecte limba reală — screen readerele aleg vocea
+  // și regulile de pronunție pe baza lui. Guard: i18n.js e importabil headless (teste).
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = currentLang;
+  }
 }
 
 export function setLanguage(lang) {

@@ -12,16 +12,18 @@
     Content-Security-Policy restricționează ce poate fi încărcat/executat în pagină.
     Chiar dacă apare un XSS, atacatorul nu poate încărca scripturi de pe alte domenii.
 
-    TRADE-OFFS EXPLICITE:
-      • 'unsafe-inline' (script): păstrat pentru event handlers inline din template strings
-         generate dinamic de componente (ui-form.js, ui-list.js etc.). Eliminarea lui ar
-         necesita refactorizarea tuturor template-urilor cu addEventListener separat.
+    DECIZII EXPLICITE:
+      • script-src 'self' STRICT (fără 'unsafe-inline'): toate componentele folosesc
+         addEventListener + delegare pe data-action — zero handlers inline. Un XSS
+         reușit nu poate executa nici script inline, nici script extern.
       • 'unsafe-eval' ELIMINAT: Tailwind CDN (care folosea JIT via Function()) a fost
          înlocuit cu tailwind.css compilat static — CSP mai strict, zero request extern.
+      • style-src păstrează 'unsafe-inline' pentru atribute style="" din template-uri
+         (risc minor: CSS injection ≠ execuție de cod).
   -->
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' 'unsafe-inline';
+    script-src 'self';
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' data: https://fonts.gstatic.com;
     img-src 'self' data:;
@@ -31,9 +33,9 @@
     form-action 'self';
   " />
   <!--
-    NOTĂ: frame-ancestors funcționează doar ca HTTP response header (nu via meta).
-    Într-un deploy real l-am seta din nginx/Apache: `add_header Content-Security-Policy "...frame-ancestors 'none'..."`.
-    Alternativ, X-Frame-Options ar funcționa via meta în vechi browsere, dar e deprecated.
+    NOTĂ: frame-ancestors funcționează doar ca HTTP response header (nu via meta) —
+    e setat în vercel.json împreună cu întregul CSP dublat ca header HTTP.
+    Meta-ul de mai sus rămâne ca defense-in-depth pentru rulare locală (file:// / static server).
   -->
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />

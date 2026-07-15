@@ -28,8 +28,10 @@ export function init(wrapperEl) {
   canvasWrapper = wrapperEl;
 
   window.addEventListener('keydown', (e) => {
-    // Guard: ignore when typing in inputs
-    if (e.target.matches('input,textarea,[contenteditable],select')) return;
+    // Guard: ignore when typing in inputs.
+    // e.target poate fi `document` (fără .matches) la evenimente sintetice — verificăm defensiv.
+    if (typeof e.target?.matches === 'function'
+      && e.target.matches('input,textarea,[contenteditable],select')) return;
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
 
     if (!active) {
