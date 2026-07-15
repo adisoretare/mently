@@ -72,7 +72,17 @@ function loadFromStorage() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return initialState();
 
-    const parsed = JSON.parse(raw);
+    // JSON malformat = date corupte, NU storage indisponibil. Îl tratăm aici
+    // (reset + cleanup) ca să nu cădem în catch-ul exterior care ar dezactiva
+    // complet persistența pentru restul sesiunii. Bug descoperit de teste.
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.warn('[store] JSON corupt în localStorage. Resetez.');
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      return initialState();
+    }
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.notes)) {
       console.warn('[store] Stare coruptă în localStorage. Resetez.');
       // Șterge blob-ul corupt ca să nu re-eșueze la fiecare reload

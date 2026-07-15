@@ -19,7 +19,11 @@ export const LIMITS = Object.freeze({
  * Prima poziție: doar literă/cifră (nu cratimă/underscore în față).
  * Anchor-uri ^ $ obligatorii → match strict, nu partial.
  */
-export const TAG_REGEX = /^[a-z0-9\u00e0-\u017f][a-z0-9\u00e0-\u017f_-]{0,31}$/;
+// \u0219 (\u0219) \u0219i \u021b (\u021b) ad\u0103ugate explicit: formele rom\u00e2ne\u0219ti corecte
+// "comma below" sunt \u00een Latin Extended-B, \u00ceN AFARA intervalului \u00e0-\u017f
+// (care acoper\u0103 doar formele legacy "cedilla" \u015f/\u0163).
+// Bug descoperit de testele unitare: "\u00eenv\u0103\u021bare" era respins ca tag.
+export const TAG_REGEX = /^[a-z0-9\u00e0-\u017f\u0219\u021b][a-z0-9\u00e0-\u017f\u0219\u021b_-]{0,31}$/;
 
 /** Eroare custom pentru cazuri de securitate — separabilă în catch. */
 export class SecurityError extends Error {
