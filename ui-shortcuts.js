@@ -1,5 +1,7 @@
-// Keyboard shortcuts overlay. Press '?' to open, Escape to close.
+// ui-shortcuts.js — Overlay-ul cu scurtăturile de tastatură.
+// Se deschide cu tasta '?' și se închide cu Escape sau click în afara modalului.
 // Dialog modal complet: focus trap (Tab ciclează în interior) + focus restore la închidere.
+// Rândurile din tabel vin din i18n, deci lista se traduce odată cu restul aplicației.
 
 import { t } from './i18n.js';
 import { escapeHtml } from './security.js';
@@ -8,6 +10,10 @@ import { allFocusable } from './dom.js';
 let overlayEl = null;
 let previouslyFocused = null;
 
+/**
+ * Construiește overlay-ul (ascuns inițial), îl atașează la <body>
+ * și instalează ascultătorii pentru deschidere/închidere.
+ */
 export function init() {
   overlayEl = document.createElement('div');
   overlayEl.className = 'shortcuts-overlay hidden';
@@ -23,7 +29,8 @@ export function init() {
 
   document.addEventListener('keydown', (e) => {
     if (overlayEl.classList.contains('hidden')) {
-      // Open on '?' — skip if focus is in an input/textarea
+      // Deschidem la '?' — dar nu când focus-ul e într-un input/textarea
+      // (acolo utilizatorul chiar vrea să tasteze semnul întrebării)
       if (e.key === '?' && !isInputFocused()) {
         e.preventDefault();
         open();
@@ -38,6 +45,7 @@ export function init() {
 }
 
 function open() {
+  // Reținem cine avea focus-ul, ca să i-l putem restitui la închidere
   previouslyFocused = document.activeElement;
   overlayEl.classList.remove('hidden');
   overlayEl.querySelector('#shortcuts-close').focus();

@@ -32,8 +32,13 @@ let placeholderEl = null;
 let statsEl = null;
 let cachedModel = null;
 
-/* ─────────────────────────── Public API ─────────────────────────── */
+/* ─────────────────────────── API public ─────────────────────────── */
 
+/**
+ * Punctul de intrare al UI-ului: montează toate componentele, leagă
+ * callback-urile între ele (rolul de mediator) și se abonează la store.
+ * Apelat o singură dată, din main.js, după încărcarea paginii.
+ */
 export function init() {
   sidebarEl     = document.getElementById('sidebar');
   canvasEl      = document.getElementById('graph-canvas');
@@ -106,12 +111,14 @@ export function init() {
     },
   });
 
-  // ─── Selection sync sidebar ↔ canvas ───
+  // ─── Sincronizarea selecției sidebar ↔ canvas ───
+  // Selecția merge în ambele sensuri: click în listă selectează pe canvas
+  // și invers — dar mereu prin ui.js, niciodată direct între componente.
   List.onSelect((id) => {
     Canvas.setSelected(id);
     Tasks.setSelectedId(id);
     id ? NodePanel.show(id) : NodePanel.hide();
-    Hash.setNodeHash(id);
+    Hash.setNodeHash(id); // reflectăm selecția în URL — hash-ul e „adresa” stării curente
     if (id) {
       const note = getNoteById(id);
       if (note) announce(`${t.a11y.nodeSelected(note.title)} ${nodeContextText(id)}`);
@@ -182,7 +189,7 @@ function nodeContextText(id) {
   return t.a11y.nodeContext(describeNode(id, cachedModel));
 }
 
-/* ─────────────────────────── Zoom controls ─────────────────────────── */
+/* ─────────────────────────── Controale de zoom ─────────────────────────── */
 
 function initZoomControls() {
   const zin  = document.getElementById('zoom-in');
@@ -200,7 +207,7 @@ function syncUndoRedoButtons() {
   if (redoBtn) redoBtn.disabled = !canRedo();
 }
 
-/* ─────────────────────────── Sidebar toggle (desktop) ─────────────────────────── */
+/* ─────────────────── Plierea sidebar-ului (doar pe desktop) ─────────────────── */
 
 const SIDEBAR_KEY = 'mently:sidebar-collapsed';
 
@@ -208,7 +215,7 @@ function initSidebarToggle() {
   const btn = document.getElementById('sidebar-toggle');
   if (!btn) return;
 
-  // Sync label from i18n and restore persisted state
+  // Sincronizăm eticheta din i18n și restaurăm starea salvată în localStorage
   if (localStorage.getItem(SIDEBAR_KEY) === '1') {
     setCollapsed(btn, true, false);
   } else {
@@ -234,13 +241,16 @@ function setCollapsed(btn, collapse, shouldAnnounce) {
   localStorage.setItem(SIDEBAR_KEY, collapse ? '1' : '0');
   if (shouldAnnounce) announce(collapse ? t.a11y.sidebarCollapsed : t.a11y.sidebarExpanded);
 
-  // Trigger canvas resize — display:none change doesn't fire window.resize
+  // Declanșăm manual un resize pentru canvas — schimbarea la display:none
+  // nu emite window.resize, deci canvasul n-ar afla că are alt spațiu disponibil
   requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 }
 
+// Re-exportăm announce din dom.js — modulele care importă deja ui.js
+// nu mai au nevoie de un import separat pentru anunțuri
 export { announce };
 
-/* ─────────────────────────── Lang + Theme toolbar ─────────────────────────── */
+/* ─────────────────────────── Toolbar limbă + temă ─────────────────────────── */
 
 const THEME_KEY = 'mently:theme';
 
@@ -256,7 +266,7 @@ function initLangThemeToolbar() {
   }
 
   if (themeBtn) {
-    // Apply persisted theme on load
+    // Aplicăm la încărcare tema salvată în localStorage (implicit: dark)
     const saved = localStorage.getItem(THEME_KEY) || 'dark';
     applyTheme(saved, false);
 
@@ -270,11 +280,12 @@ function initLangThemeToolbar() {
 function applyTheme(theme, persist) {
   document.documentElement.setAttribute('data-theme', theme);
   if (persist) localStorage.setItem(THEME_KEY, theme);
-  // Re-read CSS vars so canvas colors reflect the new theme
+  // Recitim variabilele CSS ca desenul de pe canvas să preia culorile noii teme
+  // (canvasul pictează cu valori citite din CSS, nu se recolorează singur)
   requestAnimationFrame(() => Canvas.reloadPalette());
 }
 
-/* ─────────────────────────── Sidebar shell ─────────────────────────── */
+/* ─────────────────────────── Scheletul sidebar-ului ─────────────────────────── */
 
 function renderSidebarShell() {
   return `
@@ -342,8 +353,10 @@ function renderSidebarShell() {
   `;
 }
 
-/* ─────────────────────────── Reactivity ─────────────────────────── */
+/* ─────────────────────────── Reactivitate ─────────────────────────── */
 
+// Rulează la fiecare mutație din store: recalculează modelul grafului
+// și re-randează statistici, listă, taskuri și rezumatul accesibil.
 function handleStateChange() {
   const notes = getNotes();
   const model = buildGraphModel(notes);
@@ -371,7 +384,7 @@ function handleStateChange() {
     placeholderEl.style.opacity = isEmpty ? '1' : '0';
     placeholderEl.style.transition = 'opacity 0.5s var(--ease-out-soft)';
     placeholderEl.setAttribute('aria-hidden', isEmpty ? 'false' : 'true');
-    // Keep placeholder text in sync with active language
+    // Ținem textul placeholder-ului în sincron cu limba activă
     const h = placeholderEl.querySelector('p:first-child');
     const p = placeholderEl.querySelector('p:last-child');
     if (h) h.textContent = t.meta.blank;

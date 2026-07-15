@@ -1,5 +1,9 @@
 /**
- * focus.js — Focus mode: step-through traversal of a node's BFS subtree
+ * focus.js — „Modul focus”: parcurgere pas cu pas a sub-arborelui unui nod.
+ * Ideea: apeși F pe un nod selectat și aplicația te plimbă prin toate notițele
+ * din care „se construiește” acel nod — frunzele întâi, ținta la final —
+ * cu un spotlight pe canvas și o bară de navigare (înainte/înapoi/ieșire).
+ * Ordinea pașilor vine dintr-un DFS post-ordine peste arborele BFS al grafului.
  */
 
 import { getNotes, getNoteById, subscribe } from './store.js';
@@ -9,26 +13,31 @@ import { escapeHtml } from './security.js';
 import { t } from './i18n.js';
 import * as Canvas from './canvas.js';
 
-/* ─── State ─── */
+/* ─── Stare internă ─── */
 
 let active = false;
-let steps = [];       // ordered array of note ids (leaves-first, target last)
-let stepIndex = 0;    // current step (0-based)
+let steps = [];       // lista ordonată de id-uri de notițe (frunzele întâi, ținta ultima)
+let stepIndex = 0;    // pasul curent (indexat de la 0)
 let targetId = null;
 let storeUnsub = null;
-let preFocusSelectedId = null; // Fix 1: restore pre-focus selection on exit
+let preFocusSelectedId = null; // selecția de dinainte de focus — o refacem la ieșire
 
-let barEl = null;          // the #focus-bar DOM element (lazily created)
-let canvasWrapper = null;  // set via init()
+let barEl = null;          // elementul #focus-bar din DOM (creat „leneș”, doar la prima nevoie)
+let canvasWrapper = null;  // containerul canvasului, primit prin init()
 
-/* ─── Public API ─── */
+/* ─── API public ─── */
 
+/**
+ * Inițializează modul focus: reține containerul canvasului și instalează
+ * ascultătorul global de tastatură (F pornește, săgețile navighează, Esc iese).
+ * @param {HTMLElement} wrapperEl — elementul-înveliș al canvasului; în el se montează bara.
+ */
 export function init(wrapperEl) {
-  if (canvasWrapper) return; // Fix 3: guard against double-init
+  if (canvasWrapper) return; // gardă anti dublă-inițializare — altfel am atașa listener-ul de două ori
   canvasWrapper = wrapperEl;
 
   window.addEventListener('keydown', (e) => {
-    // Guard: ignore when typing in inputs.
+    // Gardă: ignorăm tastele când utilizatorul scrie într-un câmp de text.
     // e.target poate fi `document` (fără .matches) la evenimente sintetice — verificăm defensiv.
     if (typeof e.target?.matches === 'function'
       && e.target.matches('input,textarea,[contenteditable],select')) return;
@@ -42,26 +51,32 @@ export function init(wrapperEl) {
       return;
     }
 
-    // Active focus mode keyboard nav
+    // Navigare cu tastatura cât timp modul focus e activ
     if (e.key === 'Escape') { exit(); return; }
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); next(); return; }
     if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); prev(); return; }
   });
 }
 
+/**
+ * Pornește modul focus pe notița dată: calculează pașii de parcurs,
+ * afișează bara de navigare și anunță cititoarele de ecran.
+ * @param {string} id — id-ul notiței țintă (ultimul pas din traseu).
+ */
 export function start(id) {
   if (!id) return;
   const notes = getNotes();
   const noteObj = getNoteById(id);
   if (!noteObj) return;
 
-  preFocusSelectedId = Canvas.getSelected(); // Fix 1: capture selection before overriding
+  preFocusSelectedId = Canvas.getSelected(); // memorăm selecția curentă înainte s-o suprascriem
   targetId = id;
   steps = computeSteps(id, notes);
   stepIndex = 0;
   active = true;
 
-  // Subscribe to store changes during focus
+  // Ne abonăm la schimbările din store cât timp suntem în focus
+  // (dacă utilizatorul șterge/adaugă notițe, traseul trebuie recalculat)
   if (storeUnsub) storeUnsub();
   storeUnsub = subscribe(() => handleStoreChange());
 
@@ -70,18 +85,24 @@ export function start(id) {
   announce(t.a11y.focusStarted(noteObj.title));
 }
 
+/** Trece la pasul următor (nu face nimic dacă suntem deja la ultimul). */
 export function next() {
   if (!active || stepIndex >= steps.length - 1) return;
   stepIndex++;
   applyStep();
 }
 
+/** Se întoarce la pasul anterior (nu face nimic dacă suntem la primul). */
 export function prev() {
   if (!active || stepIndex <= 0) return;
   stepIndex--;
   applyStep();
 }
 
+/**
+ * Iese din modul focus: golește starea, oprește abonamentul la store,
+ * stinge spotlight-ul de pe canvas și restaurează selecția de dinainte.
+ */
 export function exit() {
   if (!active) return;
   active = false;
@@ -92,7 +113,7 @@ export function exit() {
   if (storeUnsub) { storeUnsub(); storeUnsub = null; }
 
   Canvas.setSpotlight(null);
-  // Fix 1: restore selection that was active before focus mode started
+  // refacem selecția care era activă înainte de pornirea modului focus
   Canvas.setSelected(preFocusSelectedId);
   preFocusSelectedId = null;
 
@@ -100,21 +121,24 @@ export function exit() {
   announce(t.a11y.focusExited);
 }
 
+/** Spune celorlalte module dacă modul focus e activ în acest moment. */
 export function isActive() { return active; }
 
-/* ─── Step computation ─── */
+/* ─── Calculul pașilor ─── */
 
 function computeSteps(id, notes) {
-  // Use the real (non-overridden) BFS tree so DFS only visits id's actual subtree
+  // Folosim arborele BFS real (nesuprascris) — așa DFS-ul vizitează
+  // doar sub-arborele care chiar aparține nodului nostru, nu tot graful.
   const model = buildGraphModel(notes);
 
-  // Find which component contains our target
+  // Aflăm în ce componentă conexă (grup de noduri legate între ele) e ținta
   const compIdx = model.componentIndexById.get(id);
-  if (compIdx === undefined) return [id]; // isolated — no component found
+  if (compIdx === undefined) return [id]; // nod izolat — nu aparține niciunui grup
 
-  const comp = model.components[compIdx]; // Set<string>
+  const comp = model.components[compIdx]; // un Set<string> cu id-urile din grup
 
-  // Build children map by inverting bfsParent within the component
+  // Construim harta părinte → copii inversând bfsParent în interiorul componentei.
+  // BFS-ul ne dă doar „cine e părintele fiecărui nod”; nouă ne trebuie inversul.
   const children = new Map();
   for (const nodeId of comp) {
     if (!children.has(nodeId)) children.set(nodeId, []);
@@ -125,12 +149,16 @@ function computeSteps(id, notes) {
     }
   }
 
-  // Build a lookup for title sort
+  // Hartă id → notiță, ca să putem sorta copiii după titlu mai jos
   const notesById = new Map(notes.map((n) => [n.id, n]));
 
-  // Iterative post-order DFS (children before parent, children sorted by title)
+  // DFS post-ordine, scris iterativ (cu stivă, nu recursiv).
+  // Post-ordine = vizităm ÎNTÂI copiii, apoi părintele — exact logica de învățare:
+  // parcurgi „ingredientele” înainte de rezultat, iar ținta apare ultima.
+  // Copiii sunt sortați după titlu ca ordinea să fie stabilă și previzibilă
+  // (altfel ar depinde de ordinea internă a Map/Set, care poate varia).
   const result = [];
-  const stack = [[id, false]]; // [nodeId, childrenPushed]
+  const stack = [[id, false]]; // perechi [idNod, copiiiAuFostPușiPeStivă]
 
   while (stack.length > 0) {
     const frame = stack[stack.length - 1];
@@ -138,7 +166,7 @@ function computeSteps(id, notes) {
     const childrenPushed = frame[1];
 
     if (!childrenPushed) {
-      frame[1] = true; // mark children pushed on the SAME frame (in place)
+      frame[1] = true; // marcăm „copiii au fost puși” chiar pe cadrul curent (in place)
       const kids = (children.get(frameId) ?? [])
         .slice()
         .sort((a, b) => {
@@ -146,7 +174,8 @@ function computeSteps(id, notes) {
           const nb = notesById.get(b);
           return (na?.title ?? '').localeCompare(nb?.title ?? '');
         });
-      // Push children in reverse order so first child is processed first
+      // Punem copiii pe stivă în ordine inversă — stiva e LIFO,
+      // deci primul copil (alfabetic) ajunge procesat primul
       for (let i = kids.length - 1; i >= 0; i--) {
         stack.push([kids[i], false]);
       }
@@ -156,11 +185,12 @@ function computeSteps(id, notes) {
     }
   }
 
-  // Filter out hidden nodes (collapsed ancestor) — visiting invisible nodes is confusing
+  // Excludem nodurile ascunse (au un strămoș pliat) —
+  // ar fi derutant să „vizităm” noduri pe care utilizatorul nu le vede
   return result.filter((nodeId) => !model.hiddenIds.has(nodeId));
 }
 
-/* ─── Step application ─── */
+/* ─── Aplicarea unui pas ─── */
 
 function applyStep() {
   if (!active || steps.length === 0) return;
@@ -174,20 +204,21 @@ function applyStep() {
   updateBar();
 }
 
-/* ─── Store change handler ─── */
+/* ─── Reacția la schimbări în store ─── */
 
 function handleStoreChange() {
   if (!active) return;
   const notes = getNotes();
 
-  // If target note deleted, exit
+  // Dacă notița țintă a fost ștearsă, ieșim din modul focus
   if (!getNoteById(targetId)) { exit(); return; }
 
-  // Fix 2: recompute steps from scratch so new edges/tags are reflected
+  // Recalculăm pașii de la zero — muchiile/tag-urile noi trebuie reflectate în traseu
   const newSteps = computeSteps(targetId, notes);
   if (newSteps.length === 0) { exit(); return; }
 
-  // Try to keep user at the same note; if gone, clamp to end
+  // Încercăm să-l ținem pe utilizator la aceeași notiță;
+  // dacă ea a dispărut din traseu, ne limităm la ultimul pas valid
   const currentStepId = steps[stepIndex];
   const newIdx = newSteps.indexOf(currentStepId);
   steps = newSteps;
@@ -195,7 +226,7 @@ function handleStoreChange() {
   applyStep();
 }
 
-/* ─── Bar DOM ─── */
+/* ─── Bara de navigare (DOM) ─── */
 
 function ensureBar() {
   if (barEl) return barEl;
@@ -204,7 +235,9 @@ function ensureBar() {
   barEl = document.createElement('div');
   barEl.id = 'focus-bar';
   barEl.setAttribute('role', 'region');
-  barEl.setAttribute('aria-live', 'off'); // aria-live is on the step body, not the bar
+  // aria-live e „difuzorul” pentru cititoarele de ecran; îl punem doar pe corpul
+  // pasului (mai jos, în updateBar), nu pe toată bara — altfel s-ar anunța și butoanele
+  barEl.setAttribute('aria-live', 'off');
   canvasWrapper.appendChild(barEl);
 
   barEl.addEventListener('click', (e) => {

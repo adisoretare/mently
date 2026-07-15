@@ -1,4 +1,7 @@
-// Drawer mobil: sidebar off-screen deschis/închis cu hamburger. Inactiv pe desktop ≥768px.
+// ui-drawer.js — Drawer mobil: sidebar off-screen deschis/închis cu hamburger.
+// Pe ecrane mici sidebar-ul devine un „sertar” care alunecă peste conținut,
+// cu backdrop, focus trap și anunțuri pentru cititoarele de ecran.
+// Inactiv pe desktop ≥768px, unde sidebar-ul e mereu vizibil.
 
 import { t } from './i18n.js';
 import { announce, allFocusable, firstFocusable } from './dom.js';
@@ -12,6 +15,10 @@ let backdropEl = null;
 let isOpen = false;
 let previouslyFocused = null;
 
+/**
+ * Leagă elementele din DOM (sidebar, butoane, backdrop) și instalează
+ * ascultătorii de click, tastatură și resize.
+ */
 export function init() {
   sidebarEl  = document.getElementById('sidebar');
   openBtn    = document.getElementById('drawer-open');
@@ -38,6 +45,7 @@ export function init() {
   }, { passive: true });
 }
 
+/** Deschide drawer-ul (doar pe mobil) și mută focus-ul în interior. */
 export function open() {
   if (isOpen || isDesktop()) return;
   isOpen = true;
@@ -60,6 +68,7 @@ export function open() {
   }, reduced ? 0 : 320);
 }
 
+/** Închide drawer-ul și restituie focus-ul elementului care l-a deschis. */
 export function close() {
   if (!isOpen) return;
   isOpen = false;

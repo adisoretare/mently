@@ -1,4 +1,8 @@
-// Lista de carduri + edit/delete + export/import. Comunică prin callbacks (onSelect/onEdit/onTagClick).
+// ui-list.js — lista de notițe din sidebar: carduri cu selecție, căutare cu
+// debounce, filtrare pe tag, edit/delete cu confirmare în doi pași („armed"),
+// plus export/import JSON al întregii colecții. Nu modifică alte componente
+// direct — anunță ce s-a întâmplat prin callbacks (onSelect/onEdit/onTagClick),
+// iar cine e interesat se abonează. Așa lista rămâne decuplată de restul UI-ului.
 
 import { t } from './i18n.js';
 import { getNotes, deleteNote, clearAll, getNoteById, exportJSON, replaceNotes } from './store.js';
@@ -7,13 +11,19 @@ import { escapeHtml, parseAndValidateImport, LIMITS } from './security.js';
 import { filterNotes, highlightHtml } from './search.js';
 import * as Attachments from './attachments.js';
 
+/* ─── Starea modulului (variabile private, vizibile doar în acest fișier) ─── */
+
 let containerEl = null;
 let itemsEl = null;      // sub-containerul re-randat; separat de căsuța de căutare
 let selectedId = null;
 let activeTag = null;
 let searchQuery = '';
-let searchDebounce = null;
+let searchDebounce = null; // id-ul timer-ului de debounce pentru căutare
 
+// Starea pattern-ului „armed confirm": prima apăsare pe o acțiune distructivă
+// doar „armează" butonul (devine roșu), a doua confirmă. Timer-ul dezarmează
+// automat dacă utilizatorul nu confirmă la timp — protecție contra click-urilor
+// accidentale, fără dialoguri modale enervante.
 let clearAllArmed = false;
 let clearAllTimer = null;
 let importError = null;
@@ -21,10 +31,15 @@ let importErrorTimer = null;
 let armedDeleteId = null;
 let armedDeleteTimer = null;
 
+// Set-uri de callbacks (observer pattern) — Set evită dublarea aceleiași funcții
 const selectListeners = new Set();
 const tagClickListeners = new Set();
 const editListeners = new Set();
 
+/**
+ * Montează lista în containerul dat și leagă listener-ii de click/tastatură.
+ * Se apelează o singură dată, la pornire.
+ */
 export function mount(container) {
   containerEl = container;
 
@@ -38,10 +53,16 @@ export function mount(container) {
   itemsEl = containerEl.querySelector('#list-items');
   mountSearchBox(containerEl.querySelector('#list-search'));
 
+  // Event delegation: UN singur listener pe container pentru toate butoanele
+  // din listă (edit, delete, export, tag-uri...). Cardurile se re-randează
+  // constant prin innerHTML, deci listener-ii puși direct pe ele s-ar pierde;
+  // containerul însă nu se schimbă niciodată. În handler aflăm ce s-a apăsat
+  // după atributul data-action al țintei (closest()).
   containerEl.addEventListener('click', handleClick);
   containerEl.addEventListener('keydown', handleKeydown);
 }
 
+// Construiește căsuța de căutare și îi atașează logica de debounce.
 function mountSearchBox(wrapper) {
   wrapper.innerHTML = `
     <input
@@ -55,19 +76,24 @@ function mountSearchBox(wrapper) {
   `;
   const input = wrapper.querySelector('#note-search');
 
+  // Debounce: la fiecare tastă anulăm timer-ul precedent și pornim altul de
+  // 150ms. Căutarea rulează efectiv doar când utilizatorul face o pauză scurtă
+  // din tastat — altfel am re-randa toată lista la absolut fiecare caracter.
   input.addEventListener('input', () => {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => {
       searchQuery = input.value;
       const visible = filterNotes(getNotes(), searchQuery);
       render(getNotes());
+      // anunțăm numărul de rezultate prin aria-live, pentru screen readere
       if (searchQuery.trim()) announce(t.a11y.searchResults(visible.length));
-    }, 150); // debounce: nu re-randăm la fiecare tastă
+    }, 150);
   });
 
+  // Esc golește căutarea în loc să lase evenimentul să urce mai sus
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && input.value) {
-      e.stopPropagation(); // nu închide drawer-ul / nu iese din fullscreen
+      e.stopPropagation(); // altfel Esc ar închide drawer-ul / ar ieși din fullscreen
       input.value = '';
       searchQuery = '';
       render(getNotes());
@@ -75,6 +101,14 @@ function mountSearchBox(wrapper) {
   });
 }
 
+/**
+ * Redesenează complet lista de carduri pentru notele primite.
+ * Strategia e simplă: reconstruim tot HTML-ul din #list-items la fiecare
+ * schimbare (fără diffing) — la câteva zeci de note e mai mult decât rapid.
+ * innerHTML e sigur doar pentru că fiecare valoare dinamică trece prin
+ * escapeHtml; altfel un titlu de notă ar putea injecta HTML (XSS).
+ * @param {Array} notes — toate notele din store
+ */
 export function render(notes) {
   if (!itemsEl) return;
 
@@ -82,6 +116,7 @@ export function render(notes) {
   const searchWrap = containerEl.querySelector('#list-search');
   if (searchWrap) searchWrap.style.display = notes.length === 0 ? 'none' : '';
 
+  // Lista goală: afișăm mesajul de „bun venit" și resetăm complet starea
   if (notes.length === 0) {
     itemsEl.innerHTML = renderEmpty();
     selectedId = null;
@@ -92,6 +127,8 @@ export function render(notes) {
     return;
   }
 
+  // Curățenie de stare: dacă nota selectată sau tag-ul filtrat nu mai există
+  // (au fost șterse între timp), renunțăm la ele și anunțăm abonații.
   if (selectedId && !notes.find((n) => n.id === selectedId)) {
     selectedId = null;
     notifySelect();
@@ -123,31 +160,41 @@ export function render(notes) {
   `;
 }
 
+/* ─── API de abonare: fiecare on...() returnează o funcție de dezabonare,
+   deci apelantul poate renunța oricând fără să cunoască intern Set-ul. ─── */
+
+/** Abonează un callback la schimbarea selecției; returnează funcția de dezabonare. */
 export function onSelect(fn) {
   selectListeners.add(fn);
   return () => selectListeners.delete(fn);
 }
+/** Abonează un callback la click pe un tag (filtrare); returnează dezabonarea. */
 export function onTagClick(fn) {
   tagClickListeners.add(fn);
   return () => tagClickListeners.delete(fn);
 }
+/** Abonează un callback la cererea de editare a unei note; returnează dezabonarea. */
 export function onEdit(fn) {
   editListeners.add(fn);
   return () => editListeners.delete(fn);
 }
 
+/** Returnează id-ul notei selectate curent (sau null). */
 export function getSelectedId() { return selectedId; }
+/** Setează selecția din exterior (ex. click pe nod în canvas) și re-randează. */
 export function setSelectedId(id) {
   if (selectedId === id) return;
   selectedId = id;
   render(getNotes());
 }
+/** Setează filtrul de tag din exterior și re-randează lista. */
 export function setActiveTag(tag) {
   if (activeTag === tag) return;
   activeTag = tag;
   render(getNotes());
 }
 
+// Starea „nicio notiță": un mesaj prietenos în locul unei liste goale.
 function renderEmpty() {
   return `
     <section aria-label="${escapeHtml(t.list.heading)}" class="bg-ink-900/30 border border-dashed border-ink-800/80 rounded-2xl p-6 text-center">
@@ -164,6 +211,7 @@ function renderEmpty() {
   `;
 }
 
+// Banda de deasupra listei care arată tag-ul activ + butonul de anulare a filtrului.
 function renderActiveFilter(tag) {
   return `
     <div class="mb-3 flex items-center gap-2 px-3 py-2 bg-signal-400/10 border border-signal-400/30 rounded-md">
@@ -183,6 +231,13 @@ function renderActiveFilter(tag) {
   `;
 }
 
+/**
+ * Construiește HTML-ul unui card de notiță (titlu, fragment de conținut,
+ * tag-uri, indicator de atașamente, butoane edit/delete). Butoanele poartă
+ * data-action + data-note-id — pe astea se bazează delegarea din handleClick.
+ * @param {Object} note — nota de randat
+ * @returns {string} HTML-ul cardului (tot ce e dinamic e trecut prin escapeHtml)
+ */
 export function renderCard(note) {
   const isSelected = note.id === selectedId;
   const hasContent = !!note.content;
@@ -234,7 +289,7 @@ export function renderCard(note) {
           </span>
         ` : ''}
 
-        <!-- Action icons row (edit + delete) -->
+        <!-- Rândul cu iconițele de acțiune (editare + ștergere) -->
         <div class="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
           <button
             type="button"
@@ -266,6 +321,12 @@ export function renderCard(note) {
   `;
 }
 
+/**
+ * Construiește HTML-ul unui chip de tag clicabil (folosit pe carduri).
+ * aria-pressed reflectă dacă tag-ul e filtrul activ — un buton „toggle".
+ * @param {string} tag
+ * @returns {string} HTML-ul chip-ului
+ */
 export function renderTagChip(tag) {
   const isActive = tag === activeTag;
   const className = isActive
@@ -285,6 +346,8 @@ export function renderTagChip(tag) {
   `;
 }
 
+// Subsolul listei: export / import / „șterge tot". Butonul de clear all are
+// două înfățișări, în funcție de starea armed (normal vs. roșu de confirmare).
 function renderClearAll() {
   const clearAllBtn = clearAllArmed
     ? `<button
@@ -334,8 +397,11 @@ function renderClearAll() {
   `;
 }
 
+// Dispatcher-ul central de click-uri (event delegation): identificăm acțiunea
+// după data-action, de la cea mai specifică la cea mai generală. Ordinea
+// contează — cardul e ultimul, ca butoanele din interiorul lui să aibă prioritate.
 function handleClick(e) {
-  // Clear filter
+  // Anularea filtrului de tag
   if (e.target.closest('[data-action="clear-filter"]')) {
     e.stopPropagation();
     activeTag = null;
@@ -344,28 +410,28 @@ function handleClick(e) {
     return;
   }
 
-  // Export
+  // Export JSON
   if (e.target.closest('[data-action="export"]')) {
     e.stopPropagation();
     handleExport();
     return;
   }
 
-  // Import
+  // Import JSON
   if (e.target.closest('[data-action="import"]')) {
     e.stopPropagation();
     handleImport();
     return;
   }
 
-  // Clear all (armed first click)
+  // Șterge tot — primul click doar armează confirmarea
   if (e.target.closest('[data-action="clear-all"]')) {
     e.stopPropagation();
     armClearAll();
     return;
   }
 
-  // Clear all (confirm second click)
+  // Șterge tot — al doilea click confirmă și execută
   if (e.target.closest('[data-action="clear-all-confirm"]')) {
     e.stopPropagation();
     disarmClearAll();
@@ -374,7 +440,7 @@ function handleClick(e) {
     return;
   }
 
-  // Edit
+  // Editare — doar anunțăm abonații; formularul preia de acolo
   const editBtn = e.target.closest('[data-action="edit"]');
   if (editBtn) {
     e.stopPropagation();
@@ -383,7 +449,7 @@ function handleClick(e) {
     return;
   }
 
-  // Delete (2-click confirm)
+  // Ștergere cu confirmare în doi pași (pattern-ul „armed confirm")
   const deleteBtn = e.target.closest('[data-action="delete"]');
   if (deleteBtn) {
     e.stopPropagation();
@@ -397,13 +463,13 @@ function handleClick(e) {
       deleteNote(id);
       announce(t.a11y.noteDeleted(note.title));
     } else {
-      // Primul click — armează
+      // Primul click — doar armează butonul
       armDelete(id, note.title);
     }
     return;
   }
 
-  // Tag filter
+  // Filtrare pe tag — click pe același tag anulează filtrul (toggle)
   const tagBtn = e.target.closest('[data-tag]');
   if (tagBtn) {
     e.stopPropagation();
@@ -415,13 +481,15 @@ function handleClick(e) {
     return;
   }
 
-  // Card click → select
+  // Click direct pe card → selectare/deselectare
   const card = e.target.closest('[data-note-id]');
   if (card) {
     toggleSelect(card.dataset.noteId);
   }
 }
 
+// Cardurile au role="button" + tabindex, deci trebuie să răspundă și la
+// Enter/Space de la tastatură, nu doar la click (accesibilitate de bază).
 function handleKeydown(e) {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const card = e.target.closest('[data-note-id]');
@@ -430,10 +498,11 @@ function handleKeydown(e) {
   toggleSelect(card.dataset.noteId);
 }
 
+// Exportă toate notele + atașamentele într-un singur fișier JSON descărcabil.
 async function handleExport() {
   const json = exportJSON();
 
-  // Împachetăm și fișierele atașate (base64) → un singur JSON portabil.
+  // Împachetăm și fișierele atașate (codate base64) → un singur JSON portabil.
   // Blob-urile lipsă (IndexedDB golit manual) sunt sărite — metadata rămâne.
   const payload = JSON.parse(json);
   const files = {};
@@ -447,6 +516,10 @@ async function handleExport() {
   }
   if (Object.keys(files).length > 0) payload.files = files;
 
+  // Trucul standard de descărcare din browser: URL.createObjectURL creează un
+  // URL temporar (blob:...) către datele din memorie, îl punem pe un <a download>
+  // și simulăm click-ul. Revocăm URL-ul imediat după, altfel blob-ul ar rămâne
+  // ținut în memorie cât timp e deschisă pagina (memory leak).
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -457,8 +530,10 @@ async function handleExport() {
   announce(t.a11y.exported);
 }
 
+// Importă un fișier JSON exportat anterior: validare strictă, apoi înlocuire.
 function handleImport() {
-  // Elementul nu trebuie adăugat în DOM pentru a putea primi click() — evităm leak-ul pe cancel
+  // Un <input type="file"> creat din JS primește click() fără să fie în DOM —
+  // așa nu rămâne niciun element orfan pe pagină dacă utilizatorul dă cancel.
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = '.json,application/json';
@@ -478,7 +553,7 @@ function handleImport() {
       replaceNotes(notes);
 
       // Restaurăm blob-urile atașamentelor în IndexedDB. Verificăm dimensiunea
-      // REALĂ a blob-ului decodat (base64-ul poate minți în metadata).
+      // REALĂ a blob-ului decodat — metadata din JSON poate minți, base64-ul nu.
       for (const note of notes) {
         for (const att of (note.attachments || [])) {
           const b64 = files?.[att.id];
@@ -502,6 +577,7 @@ function handleImport() {
   fileInput.click();
 }
 
+// Afișează eroarea de import și o ascunde singură după 6 secunde.
 function setImportError(msg) {
   importError = msg;
   if (importErrorTimer) clearTimeout(importErrorTimer);
@@ -518,6 +594,10 @@ function clearImportError() {
   if (importErrorTimer) { clearTimeout(importErrorTimer); importErrorTimer = null; }
 }
 
+// Armează ștergerea unei note: butonul devine roșu și pulsează, iar dacă
+// utilizatorul nu confirmă în 3 secunde, se dezarmează singur. Verificarea
+// `armedDeleteId === id` din timer previne dezarmarea greșită dacă între timp
+// s-a armat ALTĂ notă.
 function armDelete(id, title) {
   armedDeleteId = id;
   announce(t.a11y.deleteArmed(title));
@@ -531,6 +611,7 @@ function armDelete(id, title) {
   }, 3000);
 }
 
+// Dezarmează ștergerea și curăță timer-ul aferent.
 function disarmDelete() {
   armedDeleteId = null;
   if (armedDeleteTimer) {
@@ -539,6 +620,7 @@ function disarmDelete() {
   }
 }
 
+// Același pattern „armed confirm", dar pentru butonul „șterge tot".
 function armClearAll() {
   clearAllArmed = true;
   announce(t.a11y.clearAllArmed);
@@ -560,9 +642,11 @@ function disarmClearAll() {
   }
 }
 
+// Selectează/deselectează un card și anunță abonații.
 function toggleSelect(id) {
-  // Click pe un alt card dezarmează confirmarea de ștergere — userul s-a răzgândit.
-  // Fără asta, selectarea unui card diferit lăsa butonul roșu "armat" vizibil pe cardul anterior.
+  // Click pe un alt card dezarmează confirmarea de ștergere — utilizatorul s-a
+  // răzgândit. Fără asta, selectarea unui card diferit lăsa butonul roșu
+  // „armat" vizibil pe cardul anterior.
   if (armedDeleteId && armedDeleteId !== id) disarmDelete();
   selectedId = selectedId === id ? null : id;
   if (selectedId) {
@@ -573,6 +657,8 @@ function toggleSelect(id) {
   notifySelect();
 }
 
+/* ─── Notificarea abonaților. try/catch per callback: dacă un abonat aruncă
+   o eroare, ceilalți tot își primesc notificarea. ─── */
 function notifySelect() {
   for (const fn of selectListeners) {
     try { fn(selectedId); } catch (err) { console.error('[ui-list] selectListener:', err); }

@@ -1,6 +1,9 @@
 /**
- * ui-tasks.js — Secțiunea colapsabilă Tasks din sidebar
- * Filtrează notițele cu isTask===true, afișează done/total, ascunde finalizatele implicit.
+ * ui-tasks.js — Secțiunea colapsabilă „Taskuri” din sidebar.
+ * Filtrează notițele cu isTask===true, afișează contorul done/total și
+ * ascunde implicit taskurile finalizate. Starea de pliere și „arată finalizate”
+ * se salvează în localStorage, ca preferința să supraviețuiască unui refresh.
+ * Nu vorbește direct cu alte componente — comunică prin callback-urile din ui.js.
  */
 
 import { getNotes } from './store.js';
@@ -19,8 +22,13 @@ let showDone = false;
 let onSelectCb = null;
 let onEditCb = null;
 
-/* ─────────────────────────── Public API ─────────────────────────── */
+/* ─────────────────────────── API public ─────────────────────────── */
 
+/**
+ * Montează secțiunea în containerul dat și citește preferințele din localStorage.
+ * @param {HTMLElement} rootEl — elementul în care randăm secțiunea.
+ * @param {{onSelect?: Function, onEdit?: Function}} [callbacks] — anunță ui.js la selectare/editare.
+ */
 export function mount(rootEl, { onSelect, onEdit } = {}) {
   containerEl = rootEl;
 
@@ -39,6 +47,10 @@ export function mount(rootEl, { onSelect, onEdit } = {}) {
   containerEl.addEventListener('keydown', handleKeydown);
 }
 
+/**
+ * Randează secțiunea din lista completă de notițe (filtrăm aici taskurile).
+ * @param {Array<Object>} notes — toate notițele din store.
+ */
 export function render(notes) {
   if (!containerEl) return;
 
@@ -91,16 +103,22 @@ export function render(notes) {
   `;
 }
 
+/**
+ * Sincronizează selecția venită din exterior (ex: click pe canvas) cu lista de taskuri.
+ * @param {string|null} id — id-ul notiței selectate sau null pentru deselectare.
+ */
 export function setSelectedId(id) {
   if (selectedId === id) return;
   selectedId = id;
   render(getNotes());
 }
 
-/* ─────────────────────────── Click handling (delegated) ─────────────────────────── */
+/* ─────────────── Gestionarea click-urilor (delegare de evenimente) ─────────────── */
+// Un singur listener pe container în loc de câte unul pe fiecare card —
+// funcționează și după re-randare, pentru că elementele noi „moștenesc” listener-ul.
 
 function handleClick(e) {
-  // Toggle section collapse
+  // Pliază/depliază secțiunea
   if (e.target.closest('[data-action="tasks-toggle"]')) {
     e.stopPropagation();
     collapsed = !collapsed;
@@ -110,7 +128,7 @@ function handleClick(e) {
     return;
   }
 
-  // Toggle show-done
+  // Comută afișarea taskurilor finalizate
   if (e.target.closest('[data-action="tasks-show-done"]')) {
     e.stopPropagation();
     showDone = !showDone;
@@ -119,13 +137,13 @@ function handleClick(e) {
     return;
   }
 
-  // Delete button — ignore (delete is handled by node panel, not here)
+  // Butonul de ștergere — îl ignorăm aici (ștergerea e treaba panoului de nod, nu a noastră)
   if (e.target.closest('[data-action="delete"]')) {
     e.stopPropagation();
     return;
   }
 
-  // Edit button on card
+  // Butonul de editare de pe card
   const editBtn = e.target.closest('[data-action="edit"]');
   if (editBtn) {
     e.stopPropagation();
@@ -134,7 +152,8 @@ function handleClick(e) {
     return;
   }
 
-  // Card click → select (must come after edit/delete checks)
+  // Click pe card → selectare (trebuie verificat DUPĂ edit/delete,
+  // altfel click-ul pe butoane ar declanșa și selectarea cardului)
   const card = e.target.closest('[data-note-id]');
   if (card) {
     const id = card.dataset.noteId;
@@ -145,7 +164,8 @@ function handleClick(e) {
   }
 }
 
-/* ─────────────────────────── Keyboard handling (delegated) ─────────────────────────── */
+/* ─────────────── Gestionarea tastaturii (delegare de evenimente) ─────────────── */
+// Enter/Spațiu pe un card = echivalentul click-ului, pentru navigarea fără mouse.
 
 function handleKeydown(e) {
   if (e.key !== 'Enter' && e.key !== ' ') return;

@@ -1,4 +1,12 @@
-// Renderer Canvas 2D + Pointer Events. Physics în physics.js; UI wiring în ui.js.
+/*
+ * canvas.js — desenarea grafului și interacțiunea cu mouse/touch.
+ *
+ * Aici trăiește partea „vizibilă” a aplicației: desenăm notițele ca un sistem
+ * solar (soare + planete) pe un <canvas> 2D și prindem evenimentele de pointer
+ * (click, drag, pinch, scroll). Fizica ce mișcă nodurile stă separat în
+ * physics.js, iar legătura cu restul interfeței (sidebar, butoane) se face în
+ * ui.js. Fișierul se citește de sus în jos: stare → paletă → desen → input.
+ */
 
 import { subscribe, getNotes } from './store.js';
 import { buildGraphModel, connectedComponent, nodesWithTag, describeNode } from './graph.js';
@@ -17,9 +25,9 @@ import {
 let canvasEl = null;
 let ctx = null;
 let sim = null;
-let dpr = 1;
+let dpr = 1; // devicePixelRatio — câți pixeli fizici are ecranul pentru un pixel CSS (2 pe ecrane Retina)
 
-// Cache din graph model — refreshed la subscribe
+// Cache din modelul de graf — reîmprospătat la fiecare subscribe (când se schimbă notițele)
 let edges = [];
 let adjacency = new Map();
 let nodesById = new Map();       // pentru lookup rapid în render
@@ -30,7 +38,7 @@ let depths = new Map();          // nodeId → adâncime față de soarele compo
 let sunIds = new Set();          // id-urile soarelui din fiecare componentă conexă
 let childCounts = new Map();     // nodeId → nr. copii direcți în arborele BFS (pentru sizing)
 let componentIndexById = new Map(); // nodeId → index componentă (pentru rotația de paletă)
-let hiddenIds = new Set();       // nodeId → hidden because ancestor is collapsed
+let hiddenIds = new Set();       // noduri ascunse pentru că un strămoș al lor e pliat (collapsed)
 
 // Reducere mișcare — citit o singură dată la init, nu per-frame
 let motionOK = true;
@@ -42,7 +50,7 @@ let hoveredId = null;
 let highlightedIds = null;
 let activeTag = null;
 
-// Drag state
+// Starea de drag (tragerea unui nod cu mouse-ul sau cu degetul)
 let isDragging = false;
 let dragId = null;
 let dragOffsetX = 0;
@@ -51,15 +59,22 @@ let pointerDown = null; // { x, y, time, nodeId } pentru detectare click vs drag
 
 const selectListeners = new Set();
 
-// Viewport pan (for focus mode + user pan)
+// Pan-ul viewport-ului (deplasarea „camerei” — folosit de modul focus + pan-ul manual).
+// viewportX/Y = poziția curentă a camerei; targetVX/Y = ținta spre care alunecăm lin.
 let viewportX = 0;
 let viewportY = 0;
 let targetVX = 0;
 let targetVY = 0;
+// Lerp = interpolare liniară: în fiecare cadru ne apropiem cu 12% de țintă,
+// ca o cameră care alunecă lin în loc să sară brusc la destinație.
 const VIEWPORT_LERP = 0.12;
 
 /* ─── Zoom + pan + pinch ───
- * Model de transformare: screen = world × zoom + viewport.
+ * Lucrăm cu două sisteme de coordonate:
+ *   - „world”  = coordonatele reale ale nodurilor din simulare (nu depind de zoom);
+ *   - „screen” = pixelii de pe ecran, adică exact ce vede utilizatorul.
+ * Legătura dintre ele: screen = world × zoom + viewport — întâi mărim imaginea
+ * (zoom), apoi o deplasăm (viewport), exact ca la o hartă pe telefon.
  * Codul anterior era cazul particular zoom === 1 — diff-urile rămân minime.
  * După orice interacțiune manuală sincronizăm targetVX/Y = viewportX/Y, astfel
  * lerp-ul de auto-centrare devine no-op până când spotlight-ul re-țintește. */
@@ -72,7 +87,7 @@ let isPanning = false;            // drag pe spațiu gol = pan
 let lastPanX = 0;
 let lastPanY = 0;
 
-// Spotlight (focus mode — dims all non-spotlight nodes)
+// Spotlight (modul focus — estompează toate nodurile în afara celui vizat)
 let spotlightId = null;
 
 // Valorile de mai jos sunt fallback-uri — loadPalette() le suprascrie la init()
@@ -172,7 +187,7 @@ const ringRadiiBySun = new Map(); // sunId → { r1, r2 } — razele inelelor sm
 const COMPONENT_PALETTES = [
   // 0 — Portocaliu solar (brand, default)
   { sun: 'signal400',  inner: 'signal300',  midStroke: 'signal500',  bandA: 'signal500',  bandB: 'signal300',  outerFill: 'ink900', outerStroke: 'signal300'  },
-  // 1 — Albastru gheață (planetă îngheżată)
+  // 1 — Albastru gheață (planetă înghețată)
   { sun: 'azure400',   inner: 'azure300',   midStroke: 'azure500',   bandA: 'azure300',   bandB: 'azure500',   outerFill: 'ink800', outerStroke: 'azure300'   },
   // 2 — Violet aurora (nebuloasă)
   { sun: 'aurora400',  inner: 'aurora300',  midStroke: 'aurora500',  bandA: 'aurora300',  bandB: 'aurora500',  outerFill: 'ink900', outerStroke: 'aurora300'  },
@@ -226,10 +241,16 @@ function currentPulseScale() {
   return motionOK ? (1 + 0.04 * Math.sin(performance.now() * 0.0018)) : 1;
 }
 
+/** Reîncarcă paleta din variabilele CSS — util când tema se schimbă în timpul rulării. */
 export function reloadPalette() {
   loadPalette();
 }
 
+/**
+ * Punctul de intrare al modulului: pregătește canvas-ul, creează simularea de
+ * fizică, leagă toate evenimentele de input și pornește bucla de desenare.
+ * @param {HTMLCanvasElement} canvas - elementul <canvas> din pagină
+ */
 export function init(canvas) {
   if (!canvas) {
     console.error('[canvas] Element canvas lipsă');
@@ -252,10 +273,10 @@ export function init(canvas) {
   refreshFromStore();
   subscribe(refreshFromStore);
 
-  // Pointer Events: unified mouse + touch + pen
+  // Pointer Events: un singur API pentru mouse, touch și stylus — nu scriem cod separat pentru fiecare
   canvas.addEventListener('pointerdown', handlePointerDown);
   canvas.addEventListener('pointermove', handlePointerMove);
-  window.addEventListener('pointerup', handlePointerUp); // global → catch drag release outside canvas
+  window.addEventListener('pointerup', handlePointerUp); // pe window, nu pe canvas → prindem eliberarea și dacă drag-ul se termină în afara canvas-ului
   canvas.addEventListener('pointercancel', handlePointerUp);
 
   // Zoom cu rotița — passive:false ca preventDefault să blocheze scroll-ul paginii
@@ -264,7 +285,8 @@ export function init(canvas) {
   // Keyboard: Esc curăță selecție + highlight
   window.addEventListener('keydown', handleKeydown);
 
-  // Resize cu debounce ușor (requestAnimationFrame coalescing)
+  // Resize cu un mic „debounce”: dacă vin mai multe evenimente de resize în același
+  // cadru, anulăm programarea veche și păstrăm doar una — nu refacem munca degeaba.
   let resizeFrame = 0;
   window.addEventListener('resize', () => {
     cancelAnimationFrame(resizeFrame);
@@ -272,14 +294,15 @@ export function init(canvas) {
   }, { passive: true });
 
   // Reheat la revenirea pe tab — nodurile s-au putut mișca (adăugări, ștergeri) cât
-  // tabul era ascuns iar loop-ul era oprit (document.hidden gate în funcția loop()).
+  // tabul era ascuns iar loop-ul era oprit (verificarea document.hidden din funcția loop()).
   // DE CE α=0.3: suficient să repozitioneze noduri noi fără să destabilizeze un
   // graf deja conversat. Valoare de la 1.0 (haos) scade exponențial la fiecare tick.
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) reheat(sim, 0.3);
   });
 
-  // Pornește bucla
+  // Pornește bucla de animație. requestAnimationFrame îi cere browserului să ne
+  // apeleze funcția chiar înainte de următorul cadru desenat (~60 de ori pe secundă).
   requestAnimationFrame(loop);
 }
 
@@ -309,11 +332,12 @@ function refreshFromStore() {
 }
 
 function loop() {
-  // Sari tick + render când tab-ul e ascuns (browser throttlează rAF, dar economisim și mai mult)
+  // Sărim peste tick + render când tab-ul e ascuns (browserul oricum încetinește
+  // requestAnimationFrame în fundal, dar așa economisim și mai multă baterie)
   if (!document.hidden) {
     if (sim.nodes.size > 0) tick(sim, edges);
 
-    // Lerp viewport toward target (for focus mode pan)
+    // Apropiem lin viewport-ul de țintă (pan-ul din modul focus) — vezi VIEWPORT_LERP
     if (motionOK) {
       viewportX += (targetVX - viewportX) * VIEWPORT_LERP;
       viewportY += (targetVY - viewportY) * VIEWPORT_LERP;
@@ -331,8 +355,8 @@ function render() {
   const w = getLogicalWidth();
   const h = getLogicalHeight();
 
-  // Clear pe transparent → texturile bg-grain + vignette din spate se văd
-  ctx.clearRect(0, 0, w, h);  // clear before translate — covers full canvas
+  // Ștergem pe transparent → texturile bg-grain + vignette din spatele canvas-ului rămân vizibile
+  ctx.clearRect(0, 0, w, h);  // ștergem ÎNAINTE de translate — doar așa acoperim tot canvas-ul
 
   const hasHighlight = highlightedIds !== null;
   const hasSpotlight = spotlightId !== null;
@@ -344,7 +368,7 @@ function render() {
   // 0. Inele orbitale — cel mai de jos strat, înainte de muchii și noduri
   renderOrbitalRings();
 
-  // 1. Edges (sub noduri)
+  // 1. Muchiile (desenate sub noduri, ca liniile să nu taie planetele)
   for (const edge of edges) {
     if (hiddenIds.has(edge.source) || hiddenIds.has(edge.target)) continue;
     const A = sim.nodes.get(edge.source);
@@ -382,7 +406,7 @@ function render() {
     }
 
     // Muchiile din sistemul exterior (depth mare) sunt mai estompate — ochiul rămâne
-    // ancrat pe soare și pe planetele interioare mai luminoase.
+    // ancorat pe soare și pe planetele interioare mai luminoase.
     if (isActive && !touchesSelected && !touchesHovered) {
       const dA = depths.get(edge.source) ?? 0;
       const dB = depths.get(edge.target) ?? 0;
@@ -400,7 +424,7 @@ function render() {
   }
   ctx.globalAlpha = 1;
 
-  // 2. Nodes — cu tier-ul calculat din adâncime
+  // 2. Nodurile — cu tier-ul (categoria vizuală: soare/planetă) calculat din adâncime
   for (const [id, note] of nodesById) {
     if (hiddenIds.has(id)) continue;
     const node = sim.nodes.get(id);
@@ -524,7 +548,7 @@ function renderNode(node, note, id, childCount, depth, isSelected, isHovered, is
   const tier = depth === 0 ? 0 : depth === 1 ? 1 : depth === 2 ? 2 : 3;
   const r = nodeRadius(childCount, depth);
 
-  // done notes are dimmed
+  // Notițele bifate ca „făcute” sunt estompate
   const baseAlpha = note.done ? 0.45 : 1;
   const prevAlpha = ctx.globalAlpha;
   ctx.globalAlpha = prevAlpha * baseAlpha;
@@ -534,7 +558,7 @@ function renderNode(node, note, id, childCount, depth, isSelected, isHovered, is
   // pentru sincronizarea hit-testingului cu vizualul.
   const rr = tier === 0 ? r * currentPulseScale() : r;
 
-  // Paletă determinisă bazată pe indexul componentei — zero randomness la re-render
+  // Paletă deterministă bazată pe indexul componentei — nimic aleatoriu la re-render
   const compIdx = componentIndexById.get(id) ?? 0;
   const pal = COMPONENT_PALETTES[compIdx % COMPONENT_PALETTES.length];
 
@@ -558,7 +582,7 @@ function renderNode(node, note, id, childCount, depth, isSelected, isHovered, is
 
   ctx.globalAlpha = prevAlpha;
 
-  // Badges: collapse indicator (top-right) and task/done (top-left)
+  // Insigne (badges): indicator de pliere (dreapta-sus) și task/făcut (stânga-sus)
   renderNodeBadges(node, note, r, childCount);
 }
 
@@ -729,7 +753,7 @@ function renderMidPlanet(node, r, isSelected, isHovered, pal) {
     ctx.arc(node.x, node.y, r - 0.5, 0, Math.PI * 2);
     ctx.clip();
 
-    // Bandă ecuatorială superioară — mai luminoasă, culoar de vânt calid
+    // Bandă ecuatorială superioară — mai luminoasă, culoar de vânt cald
     ctx.beginPath();
     ctx.ellipse(node.x, node.y - r * 0.18, r, r * 0.22, 0, 0, Math.PI * 2);
     ctx.fillStyle = hexToRgba(bandColorA, 0.2);
@@ -839,7 +863,7 @@ function renderNodeLabel(node, note, r, prominent) {
 
   ctx.fillText(label, node.x, labelY);
 
-  // Strikethrough for done tasks
+  // Linie de tăiere peste titlu pentru task-urile făcute
   if (note.done) {
     const metrics = ctx.measureText(label);
     const midY = labelY + 6;
@@ -855,20 +879,20 @@ function renderNodeLabel(node, note, r, prominent) {
 }
 
 /**
- * Adornment badges drawn on top of node glyph.
- * Top-left: task checkbox (filled if done).
- * Top-right: collapse chip "+N" when children are hidden.
+ * Insigne decorative desenate peste simbolul nodului.
+ * Stânga-sus: căsuța de task (umplută dacă task-ul e făcut).
+ * Dreapta-sus: pastila „+N” când copiii nodului sunt ascunși (pliați).
  */
 function renderNodeBadges(node, note, r, childCount) {
   const badgeR = 5;
 
-  // Task badge (top-left)
+  // Insigna de task (stânga-sus)
   if (note.isTask) {
     const bx = node.x - r * 0.65;
     const by = node.y - r * 0.65;
     ctx.save();
     ctx.globalAlpha = 1;
-    // Outer ring
+    // Cercul exterior al căsuței
     ctx.beginPath();
     ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
     ctx.fillStyle = note.done ? PALETTE.jade400 : PALETTE.ink800;
@@ -877,7 +901,7 @@ function renderNodeBadges(node, note, r, childCount) {
     ctx.lineWidth = 1;
     ctx.stroke();
     if (note.done) {
-      // Checkmark
+      // Bifa de „făcut”
       ctx.beginPath();
       ctx.moveTo(bx - 2.5, by);
       ctx.lineTo(bx - 0.5, by + 2);
@@ -890,7 +914,8 @@ function renderNodeBadges(node, note, r, childCount) {
     ctx.restore();
   }
 
-  // Pinned-sun badge (bottom-right) — small star when isSun=true and node is NOT already sun by selection
+  // Insigna de soare fixat (dreapta-jos) — o steluță când isSun=true, adică nodul
+  // a fost setat manual ca soare, nu a devenit soare doar prin selecție
   if (note.isSun) {
     const bx = node.x + r * 0.65;
     const by = node.y + r * 0.65;
@@ -904,7 +929,7 @@ function renderNodeBadges(node, note, r, childCount) {
     ctx.restore();
   }
 
-  // Collapse badge (top-right) — only when collapsed and has direct children
+  // Insigna de pliere (dreapta-sus) — doar când nodul e pliat și are copii direcți
   if (note.collapsed && childCount > 0) {
     const bx = node.x + r * 0.65;
     const by = node.y - r * 0.65;
@@ -939,9 +964,15 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
+// Dimensiuni „logice” = pixeli CSS. Canvas-ul are intern mai mulți pixeli fizici
+// (înmulțiți cu dpr), dar noi gândim mereu în pixeli CSS — împărțirea la dpr
+// ne readuce la sistemul în care sunt exprimate toate pozițiile.
 function getLogicalWidth()  { return canvasEl.width  / dpr; }
 function getLogicalHeight() { return canvasEl.height / dpr; }
 
+// Redimensionează canvas-ul la mărimea containerului, ținând cont de devicePixelRatio:
+// pe un ecran Retina fiecare pixel CSS acoperă 2×2 pixeli fizici, deci mărim
+// buffer-ul intern și scalăm contextul — altfel desenul ar ieși blurat.
 function resizeToContainer() {
   if (!canvasEl) return;
   const rect = canvasEl.getBoundingClientRect();
@@ -960,7 +991,10 @@ function pointerToCanvas(clientX, clientY) {
 }
 
 /**
- * Picking: găsește nodul sub punctul (x, y) sau returnează null.
+ * Hit-testing („picking”): aflăm matematic peste ce nod a nimerit cursorul.
+ * Canvas-ul e doar o imagine — browserul nu știe „pe ce am dat click” —
+ * așa că verificăm noi distanța de la punct la fiecare nod.
+ * Returnează id-ul nodului de sub punctul (x, y) sau null.
  * Folosim `nodeRadius` — același helper ca în render — ca să nu existe
  * discrepanță între ce vede utilizatorul și ce detectează click-ul.
  */
@@ -997,7 +1031,7 @@ function screenToWorld(x, y) {
 
 function handlePointerDown(e) {
   if (e.button !== undefined && e.button !== 0) return; // doar left click / primary touch
-  if (spotlightId !== null) return; // focus mode active — disable all canvas interaction
+  if (spotlightId !== null) return; // modul focus e activ — dezactivăm orice interacțiune cu canvas-ul
   // setPointerCapture poate arunca NotFoundError dacă pointerul a fost deja
   // eliberat între eveniment și handler (sau la evenimente sintetice din teste).
   try { canvasEl.setPointerCapture?.(e.pointerId); } catch { /* non-fatal */ }
@@ -1170,15 +1204,17 @@ export function setSelected(id) {
   refreshFromStore();
 }
 
+/** @returns {string|null} id-ul nodului selectat curent (sau null dacă nimic nu e selectat). */
 export function getSelected()  { return selectedId; }
 
 /**
- * Sets the spotlight node for focus mode. Dims all other nodes; pans viewport
- * to center the target node. Pass null to exit spotlight.
+ * Setează nodul „spotlight” pentru modul focus: estompează toate celelalte
+ * noduri și deplasează camera astfel încât nodul vizat să ajungă în centru.
+ * @param {string|null} id - id-ul nodului vizat; null iese din modul focus
  */
 export function setSpotlight(id) {
   spotlightId = id;
-  clearHighlight(); // focus wins over tag highlight
+  clearHighlight(); // modul focus are prioritate față de highlight-ul de tag
 
   if (id) {
     const node = sim && sim.nodes.get(id);
@@ -1194,6 +1230,11 @@ export function setSpotlight(id) {
   }
 }
 
+/**
+ * Re-țintește camera pe nodul spotlight — apelat când nodul s-a mișcat între
+ * timp (fizica îl mai deplasează) și vrem să rămână centrat pe ecran.
+ * @param {string} id - id-ul nodului urmărit
+ */
 export function updateSpotlightTarget(id) {
   if (!id || !sim) return;
   const node = sim.nodes.get(id);
@@ -1205,6 +1246,11 @@ export function updateSpotlightTarget(id) {
   targetVY = h / 2 - node.y * zoom;
 }
 
+/**
+ * Abonează un listener la schimbarea selecției (așa se sincronizează sidebar-ul).
+ * @param {(id: string|null) => void} fn - apelat cu noul id selectat
+ * @returns {() => void} funcție de dezabonare
+ */
 export function onSelect(fn) {
   selectListeners.add(fn);
   return () => selectListeners.delete(fn);
@@ -1248,7 +1294,7 @@ function notifySelect() {
  * Re-click pe același tag → toggle off.
  */
 export function highlightByTag(tag) {
-  if (spotlightId !== null) return; // focus wins over tag highlight
+  if (spotlightId !== null) return; // modul focus are prioritate față de highlight-ul de tag
   if (!tag) { clearHighlight(); return; }
   if (activeTag === tag) { clearHighlight(); return; }
 
@@ -1262,6 +1308,7 @@ export function highlightByTag(tag) {
   reheat(sim, 0.2);
 }
 
+/** @returns {string|null} tag-ul activ pentru highlight (sau null dacă nu e niciunul). */
 export function getActiveTag() { return activeTag; }
 
 function clearHighlight() {
@@ -1270,9 +1317,12 @@ function clearHighlight() {
 }
 
 /**
- * Returns the canvas-wrapper-relative CSS pixel position of a node.
- * Used by ui-node-panel.js to anchor the floating panel.
- * Returns null if node is hidden, not in sim, or canvas not mounted.
+ * Returnează poziția unui nod în pixeli CSS, relativ la wrapper-ul canvas-ului
+ * (adică deja convertită din world în screen). Folosită de ui-node-panel.js
+ * ca să ancoreze panoul plutitor lângă nod.
+ * @param {string} id - id-ul nodului
+ * @returns {{x: number, y: number, r: number}|null} null dacă nodul e ascuns,
+ *          nu există în simulare sau canvas-ul nu e montat
  */
 export function getNodeScreenPosition(id) {
   if (!canvasEl || !sim || hiddenIds.has(id)) return null;
@@ -1299,19 +1349,23 @@ function zoomAt(sx, sy, factor) {
   targetVY = viewportY;
 }
 
+/** Mărește imaginea cu 25%, centrat pe mijlocul ecranului (butonul „+”). */
 export function zoomIn()  { zoomAt(getLogicalWidth() / 2, getLogicalHeight() / 2, 1.25); }
+/** Micșorează imaginea cu 25%, centrat pe mijlocul ecranului (butonul „−”). */
 export function zoomOut() { zoomAt(getLogicalWidth() / 2, getLogicalHeight() / 2, 1 / 1.25); }
 
+/** Readuce camera la starea inițială: zoom 1, fără deplasare. */
 export function resetView() {
   zoom = 1;
   viewportX = 0; viewportY = 0;
   targetVX = 0;  targetVY = 0;
 }
 
+/** @returns {number} nivelul curent de zoom (1 = mărime naturală). */
 export function getZoom() { return zoom; }
 
 function handleWheel(e) {
-  if (spotlightId !== null) return; // focus mode controlează viewport-ul
+  if (spotlightId !== null) return; // modul focus controlează viewport-ul
   e.preventDefault(); // canvasul consumă scroll-ul — pagina nu derulează
   const { x, y } = pointerToCanvas(e.clientX, e.clientY);
   zoomAt(x, y, e.deltaY < 0 ? 1.1 : 1 / 1.1);

@@ -1,10 +1,11 @@
 /**
- * ui-node-panel.js — Floating node detail/action panel
+ * ui-node-panel.js — panoul plutitor cu detaliile și acțiunile unui nod
  * =============================================================================
- * Mounts an absolutely-positioned <aside> inside #canvas-wrapper.
- * Opens whenever a node is selected; closes on deselect / Esc.
- * Hosts all node actions: view description, collapse children,
- * mark as task, mark done, edit, delete.
+ * Montează un <aside> poziționat absolut în #canvas-wrapper, care „urmărește"
+ * nodul selectat pe canvas. Se deschide la selectarea unui nod și se închide
+ * la deselectare / Esc. Găzduiește toate acțiunile pe nod: descriere,
+ * previzualizare atașamente, citire cu voce tare, colapsare copii, marcare
+ * ca task / rezolvat, editare și ștergere (cu confirmare în doi pași).
  * =============================================================================
  */
 
@@ -14,26 +15,33 @@ import { announce } from './dom.js';
 import { t, getCurrentLanguage } from './i18n.js';
 import * as Attachments from './attachments.js';
 
-/* ─────────────────────────── Module state ─────────────────────────── */
+/* ─────────────── Starea modulului (privată acestui fișier) ─────────────── */
 
 let wrapperEl = null;
 let panelEl   = null;
-let getScreenPos = null;  // () → {x, y, r} | null
-let onEditCb  = null;     // (id) → void
-let onSetSunCb = null;    // (id) → void — handles unset-others in component
-let onFocusCb = null;     // (id) → void — triggers focus mode
+// Callbacks primite la mount — panoul nu cunoaște canvas-ul sau formularul,
+// doar apelează funcțiile date, ca să rămână decuplat.
+let getScreenPos = null;  // (id) → {x, y, r} | null — coordonatele nodului pe ecran
+let onEditCb  = null;     // (id) → void — cere formularului să intre în edit mode
+let onSetSunCb = null;    // (id) → void — setează „soarele"; debifarea celorlalți e treaba componentei
+let onFocusCb = null;     // (id) → void — pornește modul focus
 
-let currentId   = null;
-let rafId       = null;
-let deleteArmed = false;
+let currentId   = null;   // nodul afișat acum (null = panou închis)
+let rafId       = null;   // id-ul buclei requestAnimationFrame de poziționare
+let deleteArmed = false;  // pattern „armed confirm": primul click armează, al doilea șterge
 /** Atașamentul cu preview deschis (id) + URL-ul de obiect activ (de revocat). */
 let previewAttachId = null;
 let previewObjectUrl = null;
 /** Text-to-speech activ (Web Speech API — direcția de OUTPUT; input-ul vocal e în ui-voice.js). */
 let isReading = false;
 
-/* ─────────────────────────── Public API ─────────────────────────── */
+/* ─────────────────────────── API public ─────────────────────────── */
 
+/**
+ * Creează elementul <aside> al panoului și îl atașează în wrapper-ul canvas-ului.
+ * Primește prin al doilea parametru callbacks-urile către restul aplicației.
+ * Se apelează o singură dată, la pornire.
+ */
 export function mount(canvasWrapper, { getScreenPos: getPos, onEdit, onSetSun, onFocus }) {
   wrapperEl    = canvasWrapper;
   getScreenPos = getPos;
@@ -45,14 +53,23 @@ export function mount(canvasWrapper, { getScreenPos: getPos, onEdit, onSetSun, o
   panelEl.id = 'node-panel';
   panelEl.setAttribute('aria-label', t.panel.panelLabel);
   panelEl.className = 'node-panel hidden';
+  // Event delegation: un singur listener pe panou pentru TOATE butoanele din
+  // el — conținutul se re-randează des prin innerHTML, deci listener-ii puși
+  // direct pe butoane s-ar pierde; identificăm acțiunea după data-action.
   panelEl.addEventListener('click', handleClick);
   wrapperEl.appendChild(panelEl);
 
+  // La orice schimbare în store, re-randăm panoul dacă e deschis —
+  // așa reflectă mereu datele curente ale notei.
   subscribe(() => {
     if (currentId) refresh();
   });
 }
 
+/**
+ * Deschide panoul pentru nodul cu id-ul dat și pornește bucla de poziționare.
+ * Apelat cu id gol/null, doar închide panoul.
+ */
 export function show(id) {
   if (!id) { hide(); return; }
   currentId   = id;
@@ -64,6 +81,10 @@ export function show(id) {
   if (note) announce(t.a11y.panelOpened(note.title));
 }
 
+/**
+ * Închide panoul și face curățenie: revocă URL-ul de preview, oprește
+ * citirea vocală și bucla de poziționare — nimic nu rămâne să „consume" în fundal.
+ */
 export function hide() {
   if (!currentId) return;
   currentId   = null;
@@ -75,8 +96,9 @@ export function hide() {
   announce(t.a11y.panelClosed);
 }
 
-/* ─────────────────────────── Text-to-speech (Cap. III: "text to speech") ─── */
+/* ─────────────────────────── Text-to-speech (Cap. III: „text to speech") ─── */
 
+// Oprește citirea în curs (dacă există) și anulează coada de sinteză vocală.
 function stopReading() {
   if (!isReading) return;
   isReading = false;
@@ -104,6 +126,10 @@ function toggleReadAloud(note) {
   render();
 }
 
+/**
+ * Re-randează panoul cu datele curente ale notei; dacă nota a dispărut
+ * din store (a fost ștearsă), închide panoul.
+ */
 export function refresh() {
   if (!currentId) return;
   const note = getNoteById(currentId);
@@ -111,8 +137,11 @@ export function refresh() {
   render();
 }
 
-/* ─────────────────────────── Render ─────────────────────────── */
+/* ─────────────────────────── Randare ─────────────────────────── */
 
+// Reconstruiește tot conținutul panoului prin innerHTML. E sigur DOAR pentru
+// că fiecare text venit de la utilizator (titlu, tag-uri, conținut) trece
+// prin escapeHtml — altfel o notă ar putea injecta HTML în pagină (XSS).
 function render() {
   const note = getNoteById(currentId);
   if (!note) { hide(); return; }
@@ -197,6 +226,8 @@ function render() {
 
 /* ─────────────────────────── Atașamente ─────────────────────────── */
 
+// HTML-ul listei de atașamente: nume (click = preview), deschidere în tab nou
+// și descărcare. Fiecare buton poartă data-attach-id pentru delegarea de click.
 function renderAttachments(note) {
   const list = note.attachments || [];
   if (list.length === 0) return '';
@@ -229,6 +260,9 @@ function renderAttachments(note) {
   `;
 }
 
+// Închide preview-ul și revocă URL-ul de obiect. URL.createObjectURL ține
+// blob-ul în memorie până la revoke — dacă am uita pasul ăsta, fiecare
+// preview de imagine ar rămâne blocat în RAM cât e deschisă pagina.
 function clearPreview() {
   previewAttachId = null;
   if (previewObjectUrl) {
@@ -237,6 +271,8 @@ function clearPreview() {
   }
 }
 
+// Caută metadata atașamentului în nota curentă și blob-ul lui în IndexedDB.
+// Poate returna {meta, blob: null} — metadata există, dar fișierul lipsește.
 async function getAttachment(attachId) {
   const note = getNoteById(currentId);
   const meta = note?.attachments?.find((a) => a.id === attachId);
@@ -249,6 +285,8 @@ async function getAttachment(attachId) {
   }
 }
 
+// Deschide/închide preview-ul unui atașament, în funcție de tipul lui:
+// imagine inline, text în <pre>, iar PDF-urile merg direct în tab nou.
 async function togglePreview(attachId) {
   if (previewAttachId === attachId) {
     clearPreview();
@@ -272,6 +310,8 @@ async function togglePreview(attachId) {
   }
 
   if (meta.type.startsWith('image/')) {
+    // URL temporar (blob:...) către datele din memorie — <img> îl poate afișa
+    // direct, fără server. Îl revocăm în clearPreview() ca să eliberăm memoria.
     previewObjectUrl = URL.createObjectURL(blob);
     const img = document.createElement('img');
     img.src = previewObjectUrl;
@@ -282,27 +322,32 @@ async function togglePreview(attachId) {
     const text = await blob.text();
     const pre = document.createElement('pre');
     pre.className = 'node-panel-attach-text';
-    // textContent — browserul NU interpretează conținutul ca HTML (zero XSS)
+    // textContent, nu innerHTML — browserul NU interpretează conținutul ca HTML,
+    // deci un fișier text malițios nu poate injecta nimic (zero XSS)
     pre.textContent = text.slice(0, 4000) + (text.length > 4000 ? '\n…' : '');
     area.replaceChildren(pre);
   } else {
-    // PDF: preview inline ar cere object/embed (object-src 'none' în CSP) —
-    // se deschide în tab nou prin acțiunea "open"
+    // PDF: preview inline ar cere <object>/<embed>, blocate de CSP-ul nostru
+    // (object-src 'none') — așa că îl deschidem direct în tab nou
     openAttachment(attachId);
     clearPreview();
     render();
   }
 }
 
+// Deschide atașamentul într-un tab nou, printr-un URL de obiect temporar.
 async function openAttachment(attachId) {
   const found = await getAttachment(attachId);
   if (!found?.blob) return;
   const url = URL.createObjectURL(found.blob);
   window.open(url, '_blank', 'noopener');
-  // Revocăm după ce tab-ul nou a preluat resursa
+  // Nu putem revoca imediat — tab-ul nou încă încarcă resursa. 30s e o marjă
+  // sigură după care eliberăm memoria.
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+// Descarcă atașamentul: URL de obiect pe un <a download> + click simulat,
+// apoi revoke imediat (aici descărcarea pornește sincron, nu mai așteptăm).
 async function downloadAttachment(attachId) {
   const found = await getAttachment(attachId);
   if (!found?.blob) return;
@@ -314,8 +359,11 @@ async function downloadAttachment(attachId) {
   URL.revokeObjectURL(url);
 }
 
-/* ─────────────────────────── Action handling ─────────────────────────── */
+/* ─────────────────────────── Tratarea acțiunilor ─────────────────────────── */
 
+// Dispatcher-ul de click-uri al panoului (event delegation): urcăm din
+// e.target cu closest() până la primul element cu data-action și ramificăm
+// pe valoarea lui — un singur listener acoperă toate butoanele.
 function handleClick(e) {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
@@ -389,10 +437,13 @@ function handleClick(e) {
       break;
 
     case 'delete':
+      // Confirmare „armed" în doi pași: primul click armează butonul (devine
+      // roșu), al doilea șterge. Protecție simplă contra click-urilor
+      // accidentale, fără dialog modal.
       if (!deleteArmed) {
         deleteArmed = true;
         render();
-        // Auto-disarm after 3s
+        // Dezarmare automată după 3 secunde dacă utilizatorul nu confirmă
         setTimeout(() => {
           if (deleteArmed) { deleteArmed = false; if (currentId) render(); }
         }, 3000);
@@ -405,27 +456,34 @@ function handleClick(e) {
   }
 }
 
-/* ─────────────────────────── Position loop ─────────────────────────── */
+/* ─────────────────────────── Bucla de poziționare ─────────────────────────── */
 
+// Cât timp panoul e deschis, recalculăm poziția lui la FIECARE cadru prin
+// requestAnimationFrame — nodul se mișcă permanent (animație, pan, zoom),
+// iar rAF ne cheamă sincronizat cu refresh-ul ecranului (~60fps), exact
+// înainte de desenare. Un setInterval ar fi ori prea rar (sacadat), ori ar
+// irosi timp rulând și când browserul nu desenează.
 function startPositionLoop() {
-  stopPositionLoop();
+  stopPositionLoop(); // siguranță: nu lăsăm două bucle să ruleze în paralel
   function step() {
-    if (!currentId) return;
+    if (!currentId) return; // panoul s-a închis → bucla moare de la sine
     positionPanel();
     rafId = requestAnimationFrame(step);
   }
   rafId = requestAnimationFrame(step);
 }
 
+// Oprește bucla — obligatoriu la închiderea panoului, altfel rAF ar continua.
 function stopPositionLoop() {
   if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
 }
 
+// Așază panoul lângă nod (în dreapta lui), cu grijă să rămână în viewport.
 function positionPanel() {
   if (!currentId || !wrapperEl || !panelEl) return;
   const pos = getScreenPos(currentId);
   if (!pos) {
-    // node hidden (collapsed ancestor) — hide panel
+    // nodul nu mai e vizibil (un strămoș a fost colapsat) — închidem panoul
     hide();
     return;
   }
@@ -433,32 +491,34 @@ function positionPanel() {
   const { x, y, r } = pos;
   const wRect = wrapperEl.getBoundingClientRect();
   const pRect = panelEl.getBoundingClientRect();
-  const pw = pRect.width  || 280;
+  const pw = pRect.width  || 280; // fallback dacă panoul nu are încă dimensiuni măsurate
   const ph = pRect.height || 200;
 
-  const OFFSET = 14;
-  const MARGIN = 8;
+  const OFFSET = 14; // distanța dintre marginea nodului și panou
+  const MARGIN = 8;  // spațiul minim păstrat față de marginile canvas-ului
 
+  // Poziția implicită: în dreapta nodului, centrat pe verticală
   let left = x + r + OFFSET;
   let top  = y - ph / 2;
 
-  // Flip left if overflowing right edge
+  // Dacă ar ieși peste marginea dreaptă, „flip": mutăm panoul în stânga nodului
   if (left + pw > wRect.width - MARGIN) {
     left = x - r - OFFSET - pw;
   }
-  // Clamp horizontally
+  // Limităm pe orizontală în interiorul canvas-ului (clamp între margini)
   left = Math.max(MARGIN, Math.min(left, wRect.width - pw - MARGIN));
-  // Clamp vertically
+  // Limităm și pe verticală
   top  = Math.max(MARGIN, Math.min(top,  wRect.height - ph - MARGIN));
 
   panelEl.style.left = `${left}px`;
   panelEl.style.top  = `${top}px`;
 }
 
-/* ─────────────────────────── Icon helpers ─────────────────────────── */
+/* ──────── Iconițe (SVG inline — funcționează offline, fără fișiere externe) ──────── */
 
 function collapseIcon(state) {
-  // state = 'collapsed' means node IS currently expanded (show "collapse" action icon)
+  // Atenție la sens: state = 'collapsed' înseamnă că nodul E acum extins,
+  // deci arătăm iconița ACȚIUNII de colapsare (și invers).
   return state === 'collapsed'
     ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>`
     : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>`;

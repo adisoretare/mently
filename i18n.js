@@ -1,4 +1,7 @@
+// i18n.js — Internaționalizare (i18n = „internationalization”, 18 litere între i și n).
 // Singura sursă de adevăr pentru toate string-urile vizibile. Orice text UI vine de aici.
+// Două dicționare paralele (ro/en) cu exact aceeași structură de chei,
+// plus un Proxy exportat ca `t` prin care restul aplicației citește textele.
 
 const ro = {
   brand: 'Mently',
@@ -512,6 +515,10 @@ const LANGS = { ro, en };
 const LANG_KEY = 'mently:lang';
 let currentLang = 'ro';
 
+/**
+ * Stabilește limba activă la pornire: preferința salvată, altfel limba browserului.
+ * Apelată o singură dată, din main.js, înaintea oricărei randări de text.
+ */
 export function initLanguage() {
   const saved = localStorage.getItem(LANG_KEY);
   if (saved && LANGS[saved]) {
@@ -528,18 +535,28 @@ export function initLanguage() {
   }
 }
 
+/**
+ * Schimbă limba: salvează preferința și reîncarcă pagina.
+ * Reload-ul e intenționat — e mult mai simplu și mai sigur decât să
+ * re-randăm manual fiecare bucată de text din aplicație.
+ * @param {string} lang — 'ro' sau 'en'; orice altceva e ignorat.
+ */
 export function setLanguage(lang) {
   if (!LANGS[lang]) return;
   localStorage.setItem(LANG_KEY, lang);
   location.reload();
 }
 
+/** Returnează codul limbii active ('ro' sau 'en'). */
 export function getCurrentLanguage() {
   return currentLang;
 }
 
-// Proxy: t.form.headingAdd always reads from the active language.
-// All importing modules hold the same proxy reference — no re-import needed on language change.
+// Un Proxy ES6 e un obiect care interceptează accesările de proprietăți printr-un
+// „handler” — aici, capcana `get`. Când cineva scrie `t.form.headingAdd`, capcana
+// e apelată cu cheia 'form' și returnează secțiunea din dicționarul limbii ACTIVE.
+// DE CE: toate modulele importă aceeași referință `t` o singură dată; la schimbarea
+// limbii textele se rezolvă corect fără re-import și fără să pasăm limba peste tot.
 export const t = new Proxy({}, {
   get(_, key) {
     return LANGS[currentLang][key];

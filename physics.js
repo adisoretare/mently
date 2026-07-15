@@ -1,16 +1,24 @@
-// Fruchterman-Reingold force-directed layout. Fără efecte secundare față de DOM/Canvas.
+/*
+ * physics.js — simularea de fizică ce așază nodurile pe ecran (layout
+ * „force-directed”, în stilul algoritmului Fruchterman–Reingold).
+ *
+ * Ideea: tratăm graful ca pe un sistem fizic — toate nodurile se resping între
+ * ele (ca sarcinile electrice), iar muchiile trag ca niște arcuri. Lăsat să
+ * ruleze, sistemul se așază singur într-o formă aerisită și ușor de citit.
+ * Modulul e „pur”: nu atinge DOM-ul sau Canvas-ul — canvas.js desenează rezultatul.
+ */
 
 /** Parametri impliciți — pot fi suprascriși la createSimulation(). */
 const DEFAULTS = {
   repulsion: 9000,     // Constanta Coulomb (K_r). Mai mare → noduri mai distanțate.
   attraction: 0.025,   // Constanta arc (K_a). Mai mare → muchiile trag mai puternic.
   restLength: 110,     // Lungimea de echilibru a unei muchii, în pixeli.
-  centerForce: 0.018,  // Tractiune spre centru (per axa).
+  centerForce: 0.018,  // Tracțiune spre centru (pe fiecare axă).
   damping: 0.86,       // Factor de fricțiune pe viteză (0-1).
   maxVelocity: 25,     // Limita superioară a |v| → stabilitate numerică.
   minDistance: 1,      // Distanță minimă luată în calcul (evită div by zero).
   alphaDecay: 0.0035,  // Cât scade alpha per tick.
-  alphaMin: 0.005,     // Sub această valoare, simularea e "convergence".
+  alphaMin: 0.005,     // Sub această valoare considerăm că simularea a convers (s-a liniștit).
 };
 
 /**
@@ -26,7 +34,7 @@ export function createSimulation(width, height, params = {}) {
     cfg: { ...DEFAULTS, ...params },
     /** Map id → { x, y, vx, vy, fx, fy, pinned } */
     nodes: new Map(),
-    /** Energia globală: 1 = activ, → 0 = convergence. Reset pe interacțiune. */
+    /** Energia globală („alpha”): 1 = agitat, spre 0 = liniștit. Resetată la interacțiuni. */
     alpha: 1,
   };
 }
@@ -36,7 +44,7 @@ export function createSimulation(width, height, params = {}) {
  *   - notițe noi → adăugate cu poziție random near-center, viteză 0
  *   - notițe șterse → eliminate
  *   - notițe existente → poziție păstrată
- * Resetează alpha la 1 pentru a anima inserțiile/șterările.
+ * Resetează alpha la 1 pentru a anima inserțiile/ștergerile.
  */
 export function syncNodes(sim, notes) {
   const seenIds = new Set();
@@ -72,12 +80,12 @@ export function syncNodes(sim, notes) {
 
 /**
  * Un pas al simulării. Aplică forțele, integrează, decrementează alpha.
- * @returns {boolean} true dacă simularea încă rulează, false dacă convergence
+ * @returns {boolean} true dacă simularea încă rulează, false dacă a convers
  */
 export function tick(sim, edges) {
   const { cfg } = sim;
 
-  // Skip totul când simularea a convers — economie CPU/baterie majoră
+  // Sărim peste tot când simularea a convers — economie majoră de CPU/baterie
   if (sim.alpha < cfg.alphaMin) return false;
 
   const ids = [...sim.nodes.keys()];
@@ -129,7 +137,8 @@ export function tick(sim, edges) {
     const dy = B.y - A.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    // Greutatea muchiei (= număr tag-uri comune) amplifică forța → semantic visual
+    // Greutatea muchiei (= numărul de tag-uri comune) amplifică forța →
+    // notițele mai înrudite semantic stau mai aproape una de alta și vizual
     const k = cfg.attraction * edge.weight;
     const displacement = dist - cfg.restLength;
     const force = k * displacement;
@@ -151,12 +160,13 @@ export function tick(sim, edges) {
     node.fy += (cy - node.y) * cfg.centerForce;
   }
 
-  // 5. Integrare Euler + damping + alpha scaling
+  // 5. Integrare Euler (cea mai simplă metodă numerică: viteză += forță, poziție += viteză),
+  //    plus damping (frecare) și scalare cu alpha (forțele slăbesc pe măsură ce ne liniștim)
   const maxV = cfg.maxVelocity;
   const maxV2 = maxV * maxV;
 
   for (const node of sim.nodes.values()) {
-    if (node.pinned) continue; // nodurile fixed (drag) nu sunt integrate
+    if (node.pinned) continue; // nodurile fixate (ținute cu drag) nu sunt mișcate de forțe
 
     node.vx = (node.vx + node.fx * sim.alpha) * cfg.damping;
     node.vy = (node.vy + node.fy * sim.alpha) * cfg.damping;
@@ -180,6 +190,11 @@ export function tick(sim, edges) {
   return true;
 }
 
+/**
+ * Întoarce nodul de simulare (poziție + viteză) pentru un id, sau undefined.
+ * @param {object} sim - simularea creată cu createSimulation()
+ * @param {string} id  - id-ul notiței
+ */
 export function getNode(sim, id) {
   return sim.nodes.get(id);
 }

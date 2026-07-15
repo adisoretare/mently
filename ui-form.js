@@ -1,4 +1,8 @@
-// Formular add/edit dual-mode. Comunică prin callbacks; nu cunoaște alte componente.
+// ui-form.js — formularul de notițe, cu două „fețe": add și edit.
+// Același formular servește ambele scopuri; variabila `editingId` decide modul.
+// Aici se gestionează câmpurile (titlu, conținut, tag-uri, atașamente),
+// validarea la submit și mesajele de eroare. Nu știe nimic despre listă sau
+// canvas — comunică doar prin store (addNote/updateNote) și prin evenimente.
 
 import { t } from './i18n.js';
 import { addNote, updateNote, getNoteById, subscribe } from './store.js';
@@ -26,6 +30,7 @@ let formHeading = null;
 let formErrorEl = null;
 let titleErrorEl = null;
 
+// Starea „în lucru" a formularului — trăiește doar în memorie până la submit.
 let tags = [];
 /**
  * Atașamente în lucru: {id, name, type, size, addedAt, file?}.
@@ -38,7 +43,13 @@ let attachInputEl = null;
 /** null = add mode; id string = edit mode pentru nota respectivă. */
 let editingId = null;
 
+/**
+ * Montează formularul în containerul primit și leagă toate listener-ele.
+ * Se apelează o singură dată, la pornirea aplicației.
+ */
 export function mount(container) {
+  // innerHTML e sigur aici doar pentru că TOT textul dinamic din template()
+  // trece prin escapeHtml — altfel un titlu cu <script> ar deveni XSS.
   container.innerHTML = template();
 
   formEl       = container.querySelector('#note-form');
@@ -58,7 +69,9 @@ export function mount(container) {
   Voice.init(titleInput);
   Voice.init(contentInput);
 
-  // Dacă nota editată dispare (clear all, delete extern), ieșim silent.
+  // Ne abonăm la store: dacă nota aflată în editare dispare între timp
+  // (clear all sau delete din altă componentă), ieșim din edit mode în liniște,
+  // fără anunț — altfel formularul ar rămâne „blocat" pe o notă inexistentă.
   subscribe(() => {
     if (editingId && !getNoteById(editingId)) {
       exitEditMode({ silent: true });
@@ -68,7 +81,10 @@ export function mount(container) {
 
 /**
  * Intră în edit mode pentru o notiță existentă.
- * Populează câmpurile, schimbă heading-ul și submit-ul, dezvăluie Cancel.
+ * Populează câmpurile, schimbă heading-ul și textul de pe submit,
+ * dezvăluie butonul Cancel. Returnează false dacă nota nu mai există.
+ * @param {string} noteId — id-ul notei de editat
+ * @returns {boolean} true dacă am intrat efectiv în edit mode
  */
 export function enterEditMode(noteId) {
   const note = getNoteById(noteId);
@@ -76,7 +92,8 @@ export function enterEditMode(noteId) {
 
   editingId = noteId;
 
-  // Populare câmpuri
+  // Copiem valorile notei în câmpuri (spread pe tags/attachments ca să nu
+  // modificăm din greșeală obiectele din store înainte de submit)
   titleInput.value = note.title;
   contentInput.value = note.content || '';
   tags = [...(note.tags || [])];
@@ -84,7 +101,7 @@ export function enterEditMode(noteId) {
   attachments = (note.attachments || []).map((a) => ({ ...a }));
   renderAttachList();
 
-  // UI mode switch
+  // Comutăm interfața pe modul de editare (heading, buton, Cancel vizibil)
   formHeading.textContent = `${t.form.headingEdit}: ${truncate(note.title, 28)}`;
   submitBtn.textContent = t.form.submitEdit;
   cancelBtn.classList.remove('hidden');
@@ -98,11 +115,18 @@ export function enterEditMode(noteId) {
   // Scroll formularul în viewport (util pe mobil/sidebar scrollabil)
   formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+  // announce() scrie într-o regiune aria-live: screen reader-ul citește textul
+  // cu voce tare fără să mutăm focusul — așa află și utilizatorii nevăzători
+  // că s-a schimbat ceva pe ecran.
   announce(t.a11y.editingStart(note.title));
   return true;
 }
 
-/** Ieși din edit mode → revine la add mode. */
+/**
+ * Iese din edit mode și readuce formularul la add mode (câmpuri goale).
+ * @param {{silent?: boolean}} [opts] — silent=true sare peste anunțul vocal
+ *   pentru screen reader (util când ieșirea nu e o acțiune a utilizatorului).
+ */
 export function exitEditMode({ silent = false } = {}) {
   if (!editingId) return;
   editingId = null;
@@ -122,6 +146,7 @@ export function exitEditMode({ silent = false } = {}) {
   if (!silent) announce(t.a11y.editingCancel);
 }
 
+/** Spune dacă formularul e în edit mode (util altor componente, ex. la Esc global). */
 export function isEditing() {
   return editingId !== null;
 }
@@ -254,6 +279,10 @@ function attachListeners() {
 
   formEl.querySelector('#attach-add').addEventListener('click', () => attachInputEl.click());
   attachInputEl.addEventListener('change', handleFilesPicked);
+  // „Event delegation": un singur listener pe containerul listei, nu câte unul
+  // pe fiecare buton ×. Lista se re-randează des (innerHTML), iar listener-ii
+  // puși direct pe butoane s-ar pierde la fiecare rebuild; containerul rămâne.
+  // Identificăm butonul apăsat urcând din e.target cu closest() după data-remove-attach.
   attachListEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-remove-attach]');
     if (!btn) return;
@@ -269,7 +298,8 @@ function attachListeners() {
     if (titleInput.value.length > 0) hideFieldError(titleErrorEl, titleInput);
   });
 
-  // Esc în interiorul formularului → cancel edit (dar nu interferă cu Esc global pe canvas)
+  // Esc apăsat în formular → anulează editarea. stopPropagation ca să nu
+  // ajungă la handler-ul global de Esc al canvas-ului (care ar închide altceva).
   formEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && editingId) {
       e.stopPropagation();
@@ -278,6 +308,8 @@ function attachListeners() {
   });
 }
 
+// Enter adaugă tag-ul curent; Backspace pe input gol șterge ultimul chip —
+// exact comportamentul la care te aștepți de la un „tag input" clasic.
 function handleTagKeydown(e) {
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -288,6 +320,8 @@ function handleTagKeydown(e) {
   }
 }
 
+// Tot event delegation: un singur click handler pe wrapper acoperă atât
+// butoanele × de pe chips-uri, cât și click-ul „în gol" care dă focus input-ului.
 function handleTagWrapClick(e) {
   const removeBtn = e.target.closest('[data-remove-chip]');
   if (removeBtn) {
@@ -302,6 +336,8 @@ function handleTagWrapClick(e) {
   if (e.target === tagWrapEl) tagInput.focus();
 }
 
+// Validează și adaugă un tag: sanitizare, fără duplicate, respectă limita.
+// Returnează true/false ca handleSubmit să știe dacă poate continua.
 function commitTag(raw) {
   const clean = sanitizeTag(raw);
   if (!clean) {
@@ -328,6 +364,8 @@ function commitTag(raw) {
   return true;
 }
 
+// Redesenează chips-urile de tag înaintea input-ului. Ștergem doar chips-urile
+// vechi (nu tot wrapper-ul), ca input-ul să-și păstreze focusul și valoarea.
 function renderChips() {
   tagWrapEl.querySelectorAll('[data-chip]').forEach((c) => c.remove());
 
@@ -335,6 +373,7 @@ function renderChips() {
     const chip = document.createElement('span');
     chip.dataset.chip = idx;
     chip.className = 'inline-flex items-center gap-1 text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-signal-400/12 text-signal-300 border border-signal-400/25 select-none';
+    // innerHTML e OK: textul tag-ului trece prin escapeHtml, deci nu poate injecta HTML
     chip.innerHTML = `
       <span>${escapeHtml(tag)}</span>
       <button
@@ -350,9 +389,11 @@ function renderChips() {
 
 /* ─── Atașamente ─── */
 
+// Validează fișierele alese: extensie permisă, dimensiune sub limită, nu gol.
+// Fișierele care pică validarea sunt sărite individual, cu mesaj de eroare.
 function handleFilesPicked() {
   const files = [...attachInputEl.files];
-  attachInputEl.value = ''; // permite re-selectarea aceluiași fișier
+  attachInputEl.value = ''; // golim input-ul ca același fișier să poată fi reales
 
   for (const file of files) {
     if (attachments.length >= LIMITS.ATTACHMENTS_MAX_PER_NOTE) {
@@ -377,13 +418,15 @@ function handleFilesPicked() {
       type: ATTACHMENT_ALLOWED_TYPES[ext],
       size: file.size,
       addedAt: Date.now(),
-      file, // Blob-ul e scris în IndexedDB abia la submit
+      file, // Blob-ul propriu-zis se scrie în IndexedDB abia la submit
     });
     announce(t.a11y.attachmentAdded(name));
   }
   renderAttachList();
 }
 
+// Redesenează lista de atașamente. innerHTML e sigur: numele de fișier
+// (singurul text venit de la utilizator) trece prin escapeHtml.
 function renderAttachList() {
   if (!attachListEl) return;
   attachListEl.innerHTML = attachments.map((a, idx) => `
@@ -403,19 +446,21 @@ function renderAttachList() {
   `).join('');
 }
 
+// Format „omenesc" pentru dimensiunea fișierului: B / KB / MB.
 function formatSize(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Submit-ul comun pentru add și edit — `editingId` decide ce operație facem.
 async function handleSubmit(e) {
-  e.preventDefault();
+  e.preventDefault(); // oprim submit-ul nativ (ar reîncărca pagina)
   hideFormError();
   hideFieldError(titleErrorEl, titleInput);
 
-  // Dacă utilizatorul a lăsat ceva în tag input, încearcă să-l commit-uieze.
-  // Dacă tag-ul e invalid, abort — eroarea e deja vizibilă.
+  // Dacă utilizatorul a scris un tag dar nu a apăsat Enter, îl adăugăm noi
+  // aici. Dacă tag-ul e invalid, oprim submit-ul — eroarea e deja pe ecran.
   if (tagInput.value.trim()) {
     const committed = commitTag(tagInput.value);
     if (!committed) return;
@@ -425,10 +470,11 @@ async function handleSubmit(e) {
     title: titleInput.value,
     content: contentInput.value,
     tags: [...tags],
+    // destructurarea `{ file, ...meta }` scoate blob-ul: în store intră doar metadata
     attachments: attachments.map(({ file, ...meta }) => meta),
   };
-  // Blob-urile noi se scriu în IndexedDB DUPĂ ce store-ul acceptă nota —
-  // dacă validarea aruncă, nu rămân fișiere orfane.
+  // Blob-urile noi se scriu în IndexedDB abia DUPĂ ce store-ul acceptă nota —
+  // dacă validarea aruncă o eroare, nu rămân fișiere orfane pe disc.
   const pendingFiles = attachments.filter((a) => a.file).map((a) => ({ id: a.id, file: a.file }));
 
   try {
@@ -455,6 +501,8 @@ async function handleSubmit(e) {
       }
     }
   } catch (err) {
+    // Store-ul aruncă erori cu un cod propriu; titlul lipsă are tratament
+    // special (eroare lângă câmp + focus), restul merg în eroarea generală.
     if (err.code === 'TITLE_REQUIRED') {
       showFieldError(titleErrorEl, titleInput, t.errors.titleRequired);
       titleInput.focus();
@@ -473,6 +521,10 @@ function resetForm() {
   titleInput.focus();
 }
 
+/* ─── Helperi pentru erori: eroare generală de formular vs. eroare pe câmp.
+   Elementele au role="alert", deci screen reader-ul citește mesajul imediat
+   ce devine vizibil. aria-invalid marchează câmpul greșit pentru tehnologii
+   asistive. ─── */
 function showFormError(msg) {
   formErrorEl.textContent = msg;
   formErrorEl.classList.remove('hidden');
@@ -491,11 +543,13 @@ function hideFieldError(errEl, inputEl) {
   errEl.textContent = '';
   inputEl.setAttribute('aria-invalid', 'false');
 }
+// Feedback vizual scurt: bordură roșie o jumătate de secundă pe elementul greșit.
 function flashError(el) {
   el.classList.add('border-red-500');
   setTimeout(() => el.classList.remove('border-red-500'), 500);
 }
 
+// Scurtează un text lung la maxLen caractere, cu „…" la final (pentru heading).
 function truncate(str, maxLen) {
   if (!str || str.length <= maxLen) return str || '';
   return str.slice(0, maxLen - 1) + '…';
