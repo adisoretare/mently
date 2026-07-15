@@ -145,6 +145,7 @@ export function init() {
   initSidebarToggle();
   initLangThemeToolbar();
   initUndoRedo();
+  initZoomControls();
 
   subscribe(handleStateChange);
   handleStateChange();
@@ -173,6 +174,17 @@ function initUndoRedo() {
     if (key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); }
     else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); doRedo(); }
   });
+}
+
+/* ─────────────────────────── Zoom controls ─────────────────────────── */
+
+function initZoomControls() {
+  const zin  = document.getElementById('zoom-in');
+  const zout = document.getElementById('zoom-out');
+  const zres = document.getElementById('zoom-reset');
+  if (zin)  { zin.setAttribute('aria-label', t.zoomCtrl.zoomIn);   zin.addEventListener('click', () => Canvas.zoomIn()); }
+  if (zout) { zout.setAttribute('aria-label', t.zoomCtrl.zoomOut); zout.addEventListener('click', () => Canvas.zoomOut()); }
+  if (zres) { zres.setAttribute('aria-label', t.zoomCtrl.reset);   zres.addEventListener('click', () => Canvas.resetView()); }
 }
 
 function syncUndoRedoButtons() {

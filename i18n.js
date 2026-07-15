@@ -193,6 +193,12 @@ const ro = {
     switchLabel: 'Switch to English',
   },
 
+  zoomCtrl: {
+    zoomIn: 'Mărește graful',
+    zoomOut: 'Micșorează graful',
+    reset: 'Resetează vizualizarea',
+  },
+
   history: {
     undoLabel: 'Anulează ultima acțiune (Ctrl+Z)',
     redoLabel: 'Refă acțiunea anulată (Ctrl+Shift+Z)',
@@ -422,6 +428,12 @@ const en = {
   lang: {
     switchTo: 'RO',
     switchLabel: 'Schimbă în română',
+  },
+
+  zoomCtrl: {
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    reset: 'Reset view',
   },
 
   history: {

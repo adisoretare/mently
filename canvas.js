@@ -51,12 +51,26 @@ let pointerDown = null; // { x, y, time, nodeId } pentru detectare click vs drag
 
 const selectListeners = new Set();
 
-// Viewport pan (for focus mode)
+// Viewport pan (for focus mode + user pan)
 let viewportX = 0;
 let viewportY = 0;
 let targetVX = 0;
 let targetVY = 0;
 const VIEWPORT_LERP = 0.12;
+
+/* ─── Zoom + pan + pinch ───
+ * Model de transformare: screen = world × zoom + viewport.
+ * Codul anterior era cazul particular zoom === 1 — diff-urile rămân minime.
+ * După orice interacțiune manuală sincronizăm targetVX/Y = viewportX/Y, astfel
+ * lerp-ul de auto-centrare devine no-op până când spotlight-ul re-țintește. */
+let zoom = 1;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 3;
+const activePointers = new Map(); // pointerId → {x, y} — pentru pinch cu 2 degete
+let pinchStart = null;            // { dist, midX, midY, zoom, viewportX, viewportY }
+let isPanning = false;            // drag pe spațiu gol = pan
+let lastPanX = 0;
+let lastPanY = 0;
 
 // Spotlight (focus mode — dims all non-spotlight nodes)
 let spotlightId = null;
@@ -244,6 +258,9 @@ export function init(canvas) {
   window.addEventListener('pointerup', handlePointerUp); // global → catch drag release outside canvas
   canvas.addEventListener('pointercancel', handlePointerUp);
 
+  // Zoom cu rotița — passive:false ca preventDefault să blocheze scroll-ul paginii
+  canvas.addEventListener('wheel', handleWheel, { passive: false });
+
   // Keyboard: Esc curăță selecție + highlight
   window.addEventListener('keydown', handleKeydown);
 
@@ -322,6 +339,7 @@ function render() {
 
   ctx.save();
   ctx.translate(viewportX, viewportY);
+  ctx.scale(zoom, zoom);
 
   // 0. Inele orbitale — cel mai de jos strat, înainte de muchii și noduri
   renderOrbitalRings();
@@ -959,10 +977,11 @@ function findNodeAt(x, y) {
     const r = nodeRadius(childCounts.get(id) ?? 0, depth);
     // Soarele pulsează — hit-testingul folosește același factor ca vizualul
     const rVis = depth === 0 ? r * ps : r;
-    const dx = (x - viewportX) - node.x;
-    const dy = (y - viewportY) - node.y;
+    // screen → world: inversul transformării din render()
+    const dx = (x - viewportX) / zoom - node.x;
+    const dy = (y - viewportY) / zoom - node.y;
     const dist2 = dx * dx + dy * dy;
-    const hitR = rVis + 4; // padding mic pentru confort la click
+    const hitR = rVis + 4 / zoom; // padding de confort constant PE ECRAN, nu în world
     if (dist2 <= hitR * hitR && dist2 < bestDist2) {
       best = id;
       bestDist2 = dist2;
@@ -971,33 +990,105 @@ function findNodeAt(x, y) {
   return best;
 }
 
+/** screen → world (inversul transformării de render). */
+function screenToWorld(x, y) {
+  return { x: (x - viewportX) / zoom, y: (y - viewportY) / zoom };
+}
+
 function handlePointerDown(e) {
-  if (e.button !== undefined && e.button !== 0) return; // doar left click
+  if (e.button !== undefined && e.button !== 0) return; // doar left click / primary touch
   if (spotlightId !== null) return; // focus mode active — disable all canvas interaction
-  canvasEl.setPointerCapture?.(e.pointerId);
+  // setPointerCapture poate arunca NotFoundError dacă pointerul a fost deja
+  // eliberat între eveniment și handler (sau la evenimente sintetice din teste).
+  try { canvasEl.setPointerCapture?.(e.pointerId); } catch { /* non-fatal */ }
 
   const { x, y } = pointerToCanvas(e.clientX, e.clientY);
+  activePointers.set(e.pointerId, { x, y });
+
+  // Al 2-lea deget → intrăm în pinch: anulăm orice drag de nod în curs
+  if (activePointers.size === 2) {
+    if (isDragging && dragId) {
+      pinNode(sim, dragId, false);
+      isDragging = false;
+      dragId = null;
+    }
+    isPanning = false;
+    pointerDown = null; // gestul nu mai poate fi click
+    const [p1, p2] = [...activePointers.values()];
+    pinchStart = {
+      dist: Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1,
+      midX: (p1.x + p2.x) / 2,
+      midY: (p1.y + p2.y) / 2,
+      zoom,
+      viewportX,
+      viewportY,
+    };
+    return;
+  }
+
   const nodeId = findNodeAt(x, y);
   pointerDown = { x, y, time: performance.now(), nodeId };
 
   if (nodeId) {
     const node = sim.nodes.get(nodeId);
+    const world = screenToWorld(x, y);
     isDragging = true;
     dragId = nodeId;
-    dragOffsetX = node.x - x;
-    dragOffsetY = node.y - y;
+    // Offset-ul se ține în coordonate WORLD — independent de zoom
+    dragOffsetX = node.x - world.x;
+    dragOffsetY = node.y - world.y;
     pinNode(sim, nodeId, true);
     canvasEl.style.cursor = 'grabbing';
     reheat(sim, 0.6);
+  } else {
+    // Drag pe spațiu gol = pan al viewport-ului
+    isPanning = true;
+    lastPanX = x;
+    lastPanY = y;
+    canvasEl.style.cursor = 'grabbing';
   }
 }
 
 function handlePointerMove(e) {
   const { x, y } = pointerToCanvas(e.clientX, e.clientY);
 
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x, y });
+  }
+
+  // Pinch cu 2 degete: zoom ancorat pe mijlocul inițial + pan cu delta mijlocului
+  if (pinchStart && activePointers.size >= 2) {
+    const [p1, p2] = [...activePointers.values()];
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+
+    const nextZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStart.zoom * (dist / pinchStart.dist)));
+    // Punctul world de sub mijlocul INIȚIAL al pinch-ului rămâne sub mijlocul curent
+    const worldMidX = (pinchStart.midX - pinchStart.viewportX) / pinchStart.zoom;
+    const worldMidY = (pinchStart.midY - pinchStart.viewportY) / pinchStart.zoom;
+    viewportX = midX - worldMidX * nextZoom;
+    viewportY = midY - worldMidY * nextZoom;
+    zoom = nextZoom;
+    targetVX = viewportX;
+    targetVY = viewportY;
+    return;
+  }
+
   if (isDragging && dragId) {
-    setNodePosition(sim, dragId, x + dragOffsetX, y + dragOffsetY);
+    const world = screenToWorld(x, y);
+    setNodePosition(sim, dragId, world.x + dragOffsetX, world.y + dragOffsetY);
     reheat(sim, 0.3);
+    return;
+  }
+
+  if (isPanning) {
+    viewportX += x - lastPanX;
+    viewportY += y - lastPanY;
+    targetVX = viewportX;
+    targetVY = viewportY;
+    lastPanX = x;
+    lastPanY = y;
     return;
   }
 
@@ -1009,6 +1100,9 @@ function handlePointerMove(e) {
 }
 
 function handlePointerUp(e) {
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) pinchStart = null;
+
   const wasInteractingWithNode = pointerDown && pointerDown.nodeId;
 
   if (isDragging && dragId) {
@@ -1019,7 +1113,12 @@ function handlePointerUp(e) {
     reheat(sim, 0.3);
   }
 
-  // Detectare click vs drag
+  if (isPanning) {
+    isPanning = false;
+    canvasEl.style.cursor = hoveredId ? 'pointer' : 'grab';
+  }
+
+  // Detectare click vs drag (pan-ul dincolo de CLICK_DISTANCE_MAX nu deselectează)
   if (wasInteractingWithNode) {
     const { x: x0, y: y0, time, nodeId } = pointerDown;
     const { x: x1, y: y1 } = pointerToCanvas(e.clientX, e.clientY);
@@ -1030,9 +1129,16 @@ function handlePointerUp(e) {
     if (distance < CLICK_DISTANCE_MAX && elapsed < CLICK_TIME_MAX) {
       toggleSelect(nodeId);
     }
+    pointerDown = null;
   } else if (pointerDown) {
-    // Click pe spațiu gol → deselect + reset soare
-    if (selectedId || activeTag) {
+    const { x: x0, y: y0, time } = pointerDown;
+    const { x: x1, y: y1 } = pointerToCanvas(e.clientX, e.clientY);
+    const distance = Math.hypot(x1 - x0, y1 - y0);
+    const elapsed  = performance.now() - time;
+    pointerDown = null;
+
+    // Tap scurt pe spațiu gol → deselect + reset soare (pan lung NU deselectează)
+    if (distance < CLICK_DISTANCE_MAX && elapsed < CLICK_TIME_MAX && (selectedId || activeTag)) {
       const hadSelection = !!selectedId;
       selectedId = null;
       clearHighlight();
@@ -1041,8 +1147,6 @@ function handlePointerUp(e) {
       notifySelect();
     }
   }
-
-  pointerDown = null;
 }
 
 function handleKeydown(e) {
@@ -1081,8 +1185,8 @@ export function setSpotlight(id) {
     if (node) {
       const w = getLogicalWidth();
       const h = getLogicalHeight();
-      targetVX = w / 2 - node.x;
-      targetVY = h / 2 - node.y;
+      targetVX = w / 2 - node.x * zoom;
+      targetVY = h / 2 - node.y * zoom;
     }
   } else {
     targetVX = 0;
@@ -1097,8 +1201,8 @@ export function updateSpotlightTarget(id) {
   spotlightId = id;
   const w = getLogicalWidth();
   const h = getLogicalHeight();
-  targetVX = w / 2 - node.x;
-  targetVY = h / 2 - node.y;
+  targetVX = w / 2 - node.x * zoom;
+  targetVY = h / 2 - node.y * zoom;
 }
 
 export function onSelect(fn) {
@@ -1171,5 +1275,39 @@ export function getNodeScreenPosition(id) {
   if (!node) return null;
   const depth = depths.get(id) ?? 0;
   const r = nodeRadius(childCounts.get(id) ?? 0, depth);
-  return { x: node.x + viewportX, y: node.y + viewportY, r };
+  return { x: node.x * zoom + viewportX, y: node.y * zoom + viewportY, r: r * zoom };
+}
+
+/* ─────────────────────────── Zoom API ─────────────────────────── */
+
+/**
+ * Zoom centrat pe punctul de ecran (sx, sy) — punctul din world de sub cursor
+ * rămâne fix pe ecran. Sincronizează target-urile ca lerp-ul să nu "tragă înapoi".
+ */
+function zoomAt(sx, sy, factor) {
+  const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+  if (next === zoom) return;
+  viewportX = sx - (sx - viewportX) * (next / zoom);
+  viewportY = sy - (sy - viewportY) * (next / zoom);
+  zoom = next;
+  targetVX = viewportX;
+  targetVY = viewportY;
+}
+
+export function zoomIn()  { zoomAt(getLogicalWidth() / 2, getLogicalHeight() / 2, 1.25); }
+export function zoomOut() { zoomAt(getLogicalWidth() / 2, getLogicalHeight() / 2, 1 / 1.25); }
+
+export function resetView() {
+  zoom = 1;
+  viewportX = 0; viewportY = 0;
+  targetVX = 0;  targetVY = 0;
+}
+
+export function getZoom() { return zoom; }
+
+function handleWheel(e) {
+  if (spotlightId !== null) return; // focus mode controlează viewport-ul
+  e.preventDefault(); // canvasul consumă scroll-ul — pagina nu derulează
+  const { x, y } = pointerToCanvas(e.clientX, e.clientY);
+  zoomAt(x, y, e.deltaY < 0 ? 1.1 : 1 / 1.1);
 }
