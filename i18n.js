@@ -217,6 +217,7 @@ const ro = {
     zoomIn: 'Mărește graful',
     zoomOut: 'Micșorează graful',
     reset: 'Resetează vizualizarea',
+    recenter: 'Recentrează graful în ecran',
   },
 
   history: {
@@ -471,6 +472,7 @@ const en = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     reset: 'Reset view',
+    recenter: 'Recenter graph in view',
   },
 
   history: {

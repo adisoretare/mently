@@ -195,9 +195,11 @@ function initZoomControls() {
   const zin  = document.getElementById('zoom-in');
   const zout = document.getElementById('zoom-out');
   const zres = document.getElementById('zoom-reset');
-  if (zin)  { zin.setAttribute('aria-label', t.zoomCtrl.zoomIn);   zin.addEventListener('click', () => Canvas.zoomIn()); }
-  if (zout) { zout.setAttribute('aria-label', t.zoomCtrl.zoomOut); zout.addEventListener('click', () => Canvas.zoomOut()); }
-  if (zres) { zres.setAttribute('aria-label', t.zoomCtrl.reset);   zres.addEventListener('click', () => Canvas.resetView()); }
+  const zrec = document.getElementById('recenter');
+  if (zin)  { zin.setAttribute('aria-label', t.zoomCtrl.zoomIn);    zin.addEventListener('click', () => Canvas.zoomIn()); }
+  if (zout) { zout.setAttribute('aria-label', t.zoomCtrl.zoomOut);  zout.addEventListener('click', () => Canvas.zoomOut()); }
+  if (zres) { zres.setAttribute('aria-label', t.zoomCtrl.reset);    zres.addEventListener('click', () => Canvas.resetView()); }
+  if (zrec) { zrec.setAttribute('aria-label', t.zoomCtrl.recenter); zrec.addEventListener('click', () => Canvas.recenter()); }
 }
 
 function syncUndoRedoButtons() {

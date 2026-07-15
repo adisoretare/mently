@@ -1363,6 +1363,52 @@ export function resetView() {
   targetVX = 0;  targetVY = 0;
 }
 
+/**
+ * Recentrează graful în ecran (fit-to-view): calculează dreptunghiul care
+ * cuprinde toate nodurile vizibile, alege zoom-ul care îl încadrează cu
+ * o margine de confort și țintește camera pe centrul lui. Viewport-ul
+ * alunecă lin spre țintă prin lerp-ul din loop() — nu sare brusc.
+ * Util după ce te-ai pierdut cu pan/zoom sau graful a „plecat" din cadru.
+ */
+export function recenter() {
+  if (spotlightId !== null) return; // în modul focus camera e controlată de spotlight
+  if (!sim || sim.nodes.size === 0) { resetView(); return; }
+
+  // Dreptunghiul care cuprinde toate nodurile vizibile (world coords)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let found = false;
+  for (const [id] of nodesById) {
+    if (hiddenIds.has(id)) continue;
+    const node = sim.nodes.get(id);
+    if (!node) continue;
+    const r = nodeRadius(childCounts.get(id) ?? 0, depths.get(id) ?? 0);
+    minX = Math.min(minX, node.x - r);
+    maxX = Math.max(maxX, node.x + r);
+    minY = Math.min(minY, node.y - r);
+    maxY = Math.max(maxY, node.y + r);
+    found = true;
+  }
+  if (!found) { resetView(); return; }
+
+  const w = getLogicalWidth();
+  const h = getLogicalHeight();
+  const PAD = 60; // margine de confort în jurul grafului, în pixeli de ecran
+
+  // Zoom-ul care încadrează dreptunghiul; nu mărim peste 1 (recentrarea
+  // aduce graful în cadru, nu face zoom in pe grafuri mici), nu coborâm sub minim
+  const fit = Math.min(
+    (w - PAD * 2) / Math.max(maxX - minX, 1),
+    (h - PAD * 2) / Math.max(maxY - minY, 1)
+  );
+  zoom = Math.max(ZOOM_MIN, Math.min(1, fit));
+
+  // Țintim centrul dreptunghiului în centrul ecranului; lerp-ul face restul
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  targetVX = w / 2 - cx * zoom;
+  targetVY = h / 2 - cy * zoom;
+}
+
 /** @returns {number} nivelul curent de zoom (1 = mărime naturală). */
 export function getZoom() { return zoom; }
 
