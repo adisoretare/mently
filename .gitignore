@@ -1,2 +1,6 @@
-
 PREZENTARE.md
+
+# config local de editor/unelte
+.vscode/
+.idea/
+**/*.local.json
