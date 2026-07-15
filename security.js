@@ -6,8 +6,14 @@ export const LIMITS = Object.freeze({
   TAG_MAX_LENGTH: 32,
   TAGS_MAX_COUNT: 10,
   NOTES_MAX_COUNT: 1_000,
-  JSON_IMPORT_MAX_BYTES: 5 * 1024 * 1024,   // 5 MB → previne DoS prin fișiere uriașe
+  // 64 MB: export-ul poate conține atașamente base64 (max 5 × 10MB per notă,
+  // dar practic limitat de dimensiunea totală). Structura în sine rămâne
+  // apărată de limitele per-notă/per-atașament de mai jos.
+  JSON_IMPORT_MAX_BYTES: 64 * 1024 * 1024,
   ID_MAX_LENGTH: 64,
+  ATTACHMENT_MAX_BYTES: 10 * 1024 * 1024,   // 10 MB per fișier
+  ATTACHMENTS_MAX_PER_NOTE: 5,
+  ATTACHMENT_NAME_MAX_LENGTH: 120,
   /** Inferioara fereastrei valide pt timestamp (~ ianuarie 1980). */
   EPOCH_MIN: 315_532_800_000,
   /** Superioara fereastrei valide (~ ianuarie 2100). */
@@ -146,6 +152,85 @@ export function sanitizeTags(value) {
   return out;
 }
 
+/* ─── Atașamente (fișiere pe note) ───
+ * Allowlist STRICT pe extensie + tip MIME. html/svg/js sunt interzise
+ * categoric: servite ca blob și deschise în browser ar executa script
+ * (XSS via fișier). Tipurile permise sunt toate pasive la randare. */
+export const ATTACHMENT_ALLOWED_TYPES = Object.freeze({
+  pdf:  'application/pdf',
+  txt:  'text/plain',
+  md:   'text/markdown',
+  png:  'image/png',
+  jpg:  'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+});
+
+/**
+ * Sanitizează un nume de fișier: fără separatoare de path (../../etc/passwd),
+ * fără control chars / direcționale Unicode, lungime limitată.
+ * Returnează null dacă după curățare numele sau extensia sunt invalide.
+ */
+export function sanitizeFilename(value) {
+  if (typeof value !== 'string') return null;
+  const cleaned = value
+    .replace(FORBIDDEN_CHARS_RE, '')
+    .replace(/[\\/:*?"<>|]/g, '') // separatoare de path + caractere interzise pe FS
+    .trim()
+    .slice(0, LIMITS.ATTACHMENT_NAME_MAX_LENGTH);
+  if (!cleaned || cleaned === '.' || cleaned === '..') return null;
+  return getAttachmentExtension(cleaned) ? cleaned : null;
+}
+
+/** Extensia (lowercase) dacă e în allowlist, altfel null. */
+export function getAttachmentExtension(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(String(name ?? ''));
+  if (!m) return null;
+  const ext = m[1].toLowerCase();
+  return Object.prototype.hasOwnProperty.call(ATTACHMENT_ALLOWED_TYPES, ext) ? ext : null;
+}
+
+/**
+ * Validează metadata unui atașament de origine necunoscută.
+ * Tipul MIME e derivat din extensie (sursa de adevăr e allowlist-ul nostru,
+ * NU tipul declarat de fișier/import — acela poate minți).
+ */
+export function validateAttachmentMeta(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (hasPollutedProto(raw)) return null;
+
+  const name = sanitizeFilename(raw.name);
+  if (!name) return null;
+  const ext = getAttachmentExtension(name);
+
+  const size = Number(raw.size);
+  if (!Number.isFinite(size) || size <= 0 || size > LIMITS.ATTACHMENT_MAX_BYTES) return null;
+
+  return {
+    id: isValidId(raw.id) ? raw.id : generateId(),
+    name,
+    type: ATTACHMENT_ALLOWED_TYPES[ext],
+    size: Math.floor(size),
+    addedAt: isValidEpoch(raw.addedAt) ? raw.addedAt : Date.now(),
+  };
+}
+
+/** Validează un array de atașamente: invalide filtrate, cap per notă. */
+export function sanitizeAttachments(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of value) {
+    if (out.length >= LIMITS.ATTACHMENTS_MAX_PER_NOTE) break;
+    const meta = validateAttachmentMeta(raw);
+    if (meta && !seen.has(meta.id)) {
+      seen.add(meta.id);
+      out.push(meta);
+    }
+  }
+  return out;
+}
+
 /** Verifică dacă un timestamp e într-o fereastră rezonabilă (1980-2100). */
 function isValidEpoch(n) {
   return Number.isFinite(n) && n >= LIMITS.EPOCH_MIN && n <= LIMITS.EPOCH_MAX;
@@ -214,6 +299,7 @@ export function validateNote(raw) {
     isTask:    Boolean(raw.isTask),
     done:      Boolean(raw.done),
     isSun:     Boolean(raw.isSun),
+    attachments: sanitizeAttachments(raw.attachments),
   };
 }
 
@@ -273,8 +359,27 @@ export function parseAndValidateImport(rawString) {
     }
   }
 
+  // Fișiere atașate (base64) — opționale. Acceptăm DOAR intrări:
+  //   - referențiate de un atașament validat dintr-o notă validă
+  //   - string base64 de dimensiune plauzibilă (≤ limita per fișier × 1.37 overhead)
+  // Orice altceva e ignorat silențios (nu eșuează importul).
+  const files = {};
+  if (parsed.files && typeof parsed.files === 'object' && !Array.isArray(parsed.files) && !hasPollutedProto(parsed.files)) {
+    const referenced = new Set();
+    for (const note of validNotes) {
+      for (const att of note.attachments) referenced.add(att.id);
+    }
+    const maxB64 = Math.ceil(LIMITS.ATTACHMENT_MAX_BYTES * 1.37);
+    for (const [id, data] of Object.entries(parsed.files)) {
+      if (referenced.has(id) && typeof data === 'string' && data.length > 0 && data.length <= maxB64) {
+        files[id] = data;
+      }
+    }
+  }
+
   return {
     notes: validNotes,
+    files,
     skippedCount: skipped,
     importedCount: validNotes.length,
   };

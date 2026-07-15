@@ -11,7 +11,7 @@
  * =============================================================================
  */
 
-import { subscribe, getNotes, getNoteById, updateNote } from './store.js';
+import { subscribe, getNotes, getNoteById, updateNote, undo, redo, canUndo, canRedo } from './store.js';
 import { buildGraphModel } from './graph.js';
 import { setAriaLive, announce } from './dom.js';
 import { escapeHtml } from './security.js';
@@ -144,9 +144,42 @@ export function init() {
 
   initSidebarToggle();
   initLangThemeToolbar();
+  initUndoRedo();
 
   subscribe(handleStateChange);
   handleStateChange();
+}
+
+/* ─────────────────────────── Undo / Redo ─────────────────────────── */
+
+function initUndoRedo() {
+  const undoBtn = sidebarEl.querySelector('#undo-btn');
+  const redoBtn = sidebarEl.querySelector('#redo-btn');
+
+  const doUndo = () => { if (undo()) announce(t.history.undone); };
+  const doRedo = () => { if (redo()) announce(t.history.redone); };
+
+  undoBtn?.addEventListener('click', doUndo);
+  redoBtn?.addEventListener('click', doRedo);
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y — dar NU în câmpuri text (acolo rămâne
+  // undo-ul nativ al browserului pentru editarea de text).
+  document.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); }
+    else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); doRedo(); }
+  });
+}
+
+function syncUndoRedoButtons() {
+  const undoBtn = sidebarEl?.querySelector('#undo-btn');
+  const redoBtn = sidebarEl?.querySelector('#redo-btn');
+  if (undoBtn) undoBtn.disabled = !canUndo();
+  if (redoBtn) redoBtn.disabled = !canRedo();
 }
 
 /* ─────────────────────────── Sidebar toggle (desktop) ─────────────────────────── */
@@ -252,6 +285,16 @@ function renderSidebarShell() {
             </svg>
           </button>
           <div class="mently-toolbar" aria-label="Display settings">
+            <button id="undo-btn" class="mently-toolbar-btn" aria-label="${escapeHtml(t.history.undoLabel)}" disabled>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+              </svg>
+            </button>
+            <button id="redo-btn" class="mently-toolbar-btn" aria-label="${escapeHtml(t.history.redoLabel)}" disabled>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/>
+              </svg>
+            </button>
             <button id="lang-toggle" class="mently-toolbar-btn" aria-label="${escapeHtml(t.lang.switchLabel)}">${escapeHtml(t.lang.switchTo)}</button>
             <button id="theme-toggle" class="mently-toolbar-btn" aria-label="${escapeHtml(t.theme.toggleLabel)}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -287,6 +330,8 @@ function handleStateChange() {
   const notes = getNotes();
   const model = buildGraphModel(notes);
   cachedModel = model;
+
+  syncUndoRedoButtons();
 
   if (statsEl) {
     statsEl.innerHTML = `

@@ -4,6 +4,7 @@ import {
   sanitizeTitle,
   sanitizeContent,
   sanitizeTags,
+  sanitizeAttachments,
   validateNote,
   generateId,
   createRateLimiter,
@@ -56,6 +57,43 @@ const initialState = () => ({
 
 let state = null;
 const subscribers = new Set();
+
+/* ─── Undo / Redo — snapshot stack ───
+ * Alegere de design: snapshot complet (structuredClone) în locul command
+ * pattern-ului. Starea e mică (≤1000 note ≈ sub 1MB), clonarea durează
+ * microsecunde, iar snapshot-ul e imun la bug-uri de "inverse operation".
+ * Snapshot-ul se face DOAR când mutația chiar are loc (după validări),
+ * altfel un throw ar lăsa un snapshot orfan în stivă. */
+const UNDO_CAP = 50;
+let undoStack = [];
+let redoStack = [];
+
+function snapshot() {
+  undoStack.push(structuredClone(state));
+  if (undoStack.length > UNDO_CAP) undoStack.shift();
+  redoStack.length = 0; // o mutație nouă invalidează redo-urile
+}
+
+export function canUndo() { return undoStack.length > 0; }
+export function canRedo() { return redoStack.length > 0; }
+
+export function undo() {
+  if (undoStack.length === 0) return false;
+  redoStack.push(structuredClone(state));
+  state = undoStack.pop();
+  saveToStorage();
+  notify();
+  return true;
+}
+
+export function redo() {
+  if (redoStack.length === 0) return false;
+  undoStack.push(structuredClone(state));
+  state = redoStack.pop();
+  saveToStorage();
+  notify();
+  return true;
+}
 
 /**
  * Hidratare din localStorage. Tratează:
@@ -159,27 +197,39 @@ export function subscribe(fn) {
 
 export function init() {
   state = loadFromStorage();
+  // Sesiune nouă = istoric nou; previne și cross-talk între teste
+  undoStack = [];
+  redoStack = [];
   return getState();
 }
 
+/** Copie defensivă a unei note — subscriber-ii nu pot muta starea canonică. */
+function cloneNote(n) {
+  return {
+    ...n,
+    tags: [...n.tags],
+    attachments: Array.isArray(n.attachments) ? n.attachments.map((a) => ({ ...a })) : [],
+  };
+}
+
 export function getState() {
-  return { ...state, notes: state.notes.map((n) => ({ ...n, tags: [...n.tags] })) };
+  return { ...state, notes: state.notes.map(cloneNote) };
 }
 
 export function getNotes() {
-  return state.notes.map((n) => ({ ...n, tags: [...n.tags] }));
+  return state.notes.map(cloneNote);
 }
 
 export function getNoteById(id) {
   const found = state.notes.find((n) => n.id === id);
-  return found ? { ...found, tags: [...found.tags] } : null;
+  return found ? cloneNote(found) : null;
 }
 
 /**
  * Adaugă o notiță nouă.
  * Sanitizarea e delegată complet către security.js → date curate ÎN store.
  */
-export function addNote({ title, content, tags, collapsed = false, isTask = false, done = false, isSun = false } = {}) {
+export function addNote({ title, content, tags, attachments, collapsed = false, isTask = false, done = false, isSun = false } = {}) {
   // Rate limit — protejează împotriva spam-ului (form sau script automat).
   // Verificat ÎNAINTE de orice procesare → economie CPU pe rafale de spam.
   if (!insertLimiter.tryAcquire()) {
@@ -200,11 +250,14 @@ export function addNote({ title, content, tags, collapsed = false, isTask = fals
   const cleanTitle = sanitizeTitle(title);
   if (!cleanTitle) throw new SecurityError('Titlul este obligatoriu.', 'TITLE_REQUIRED');
 
+  snapshot();
+
   const note = {
     id: generateId(),
     title: cleanTitle,
     content: sanitizeContent(content),
     tags: sanitizeTags(tags),
+    attachments: sanitizeAttachments(attachments),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     collapsed: Boolean(collapsed),
@@ -216,7 +269,7 @@ export function addNote({ title, content, tags, collapsed = false, isTask = fals
   state.notes.push(note);
   saveToStorage();
   notify();
-  return { ...note, tags: [...note.tags] };
+  return cloneNote(note);
 }
 
 export function updateNote(id, patch = {}) {
@@ -231,28 +284,31 @@ export function updateNote(id, patch = {}) {
   }
   if ('content' in patch)   next.content   = sanitizeContent(patch.content);
   if ('tags' in patch)      next.tags      = sanitizeTags(patch.tags);
+  if ('attachments' in patch) next.attachments = sanitizeAttachments(patch.attachments);
   if ('collapsed' in patch) next.collapsed = Boolean(patch.collapsed);
   if ('isTask' in patch)    next.isTask    = Boolean(patch.isTask);
   if ('done' in patch)      next.done      = Boolean(patch.done);
   if ('isSun' in patch)    next.isSun     = Boolean(patch.isSun);
   next.updatedAt = Date.now();
 
+  snapshot();
   state.notes[idx] = next;
   saveToStorage();
   notify();
-  return { ...next, tags: [...next.tags] };
+  return cloneNote(next);
 }
 
 export function deleteNote(id) {
-  const before = state.notes.length;
+  if (!state.notes.some((n) => n.id === id)) return false;
+  snapshot();
   state.notes = state.notes.filter((n) => n.id !== id);
-  if (state.notes.length === before) return false;
   saveToStorage();
   notify();
   return true;
 }
 
 export function clearAll() {
+  if (state.notes.length > 0) snapshot(); // clearAll pe stare goală nu merită un pas de undo
   state = initialState();
   saveToStorage();
   notify();
@@ -267,9 +323,10 @@ export function replaceNotes(validatedNotes) {
   if (!Array.isArray(validatedNotes)) {
     throw new TypeError('replaceNotes așteaptă un array de note validate.');
   }
+  snapshot(); // un import greșit trebuie să fie reversibil
   state = {
     version: STORE_VERSION,
-    notes: validatedNotes.map((n) => ({ ...n, tags: [...n.tags] })),
+    notes: validatedNotes.map(cloneNote),
     meta: {
       createdAt: state?.meta?.createdAt || Date.now(),
       updatedAt: Date.now(),

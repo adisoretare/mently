@@ -12,6 +12,7 @@ import { getNoteById, updateNote, deleteNote, subscribe } from './store.js';
 import { escapeHtml } from './security.js';
 import { announce } from './dom.js';
 import { t } from './i18n.js';
+import * as Attachments from './attachments.js';
 
 /* ─────────────────────────── Module state ─────────────────────────── */
 
@@ -25,6 +26,9 @@ let onFocusCb = null;     // (id) → void — triggers focus mode
 let currentId   = null;
 let rafId       = null;
 let deleteArmed = false;
+/** Atașamentul cu preview deschis (id) + URL-ul de obiect activ (de revocat). */
+let previewAttachId = null;
+let previewObjectUrl = null;
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
@@ -62,6 +66,7 @@ export function hide() {
   if (!currentId) return;
   currentId   = null;
   deleteArmed = false;
+  clearPreview();
   panelEl.classList.add('hidden');
   stopPositionLoop();
   announce(t.a11y.panelClosed);
@@ -104,6 +109,8 @@ function render() {
           : `<p class="node-panel-desc-empty">${escapeHtml(t.panel.descriptionEmpty)}</p>`
         }
       </div>
+
+      ${renderAttachments(note)}
 
       <div class="node-panel-actions">
         <button class="node-panel-btn node-panel-btn--ghost ${note.isSun ? 'node-panel-btn--active' : ''}" data-action="toggle-sun">
@@ -149,6 +156,125 @@ function render() {
   `;
 }
 
+/* ─────────────────────────── Atașamente ─────────────────────────── */
+
+function renderAttachments(note) {
+  const list = note.attachments || [];
+  if (list.length === 0) return '';
+
+  const rows = list.map((a) => `
+    <div class="node-panel-attach-row">
+      <button
+        class="node-panel-attach-name ${a.id === previewAttachId ? 'node-panel-attach-name--active' : ''}"
+        data-action="attach-preview"
+        data-attach-id="${escapeHtml(a.id)}"
+        title="${escapeHtml(t.panel.attachPreviewLabel(a.name))}"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        <span>${escapeHtml(a.name)}</span>
+      </button>
+      <button class="node-panel-attach-action" data-action="attach-open" data-attach-id="${escapeHtml(a.id)}" aria-label="${escapeHtml(t.panel.attachOpenLabel(a.name))}" title="${escapeHtml(t.panel.attachOpenLabel(a.name))}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </button>
+      <button class="node-panel-attach-action" data-action="attach-download" data-attach-id="${escapeHtml(a.id)}" aria-label="${escapeHtml(t.panel.attachDownloadLabel(a.name))}" title="${escapeHtml(t.panel.attachDownloadLabel(a.name))}">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+    </div>
+  `).join('');
+
+  return `
+    <div class="node-panel-attachments" aria-label="${escapeHtml(t.panel.attachmentsHeading)}">
+      ${rows}
+      <div id="attach-preview-area"></div>
+    </div>
+  `;
+}
+
+function clearPreview() {
+  previewAttachId = null;
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
+}
+
+async function getAttachment(attachId) {
+  const note = getNoteById(currentId);
+  const meta = note?.attachments?.find((a) => a.id === attachId);
+  if (!meta) return null;
+  try {
+    const blob = await Attachments.get(attachId);
+    return blob ? { meta, blob } : { meta, blob: null };
+  } catch {
+    return { meta, blob: null };
+  }
+}
+
+async function togglePreview(attachId) {
+  if (previewAttachId === attachId) {
+    clearPreview();
+    render();
+    return;
+  }
+  const found = await getAttachment(attachId);
+  if (!found) return;
+  clearPreview();
+  previewAttachId = attachId;
+  render();
+
+  const area = panelEl.querySelector('#attach-preview-area');
+  if (!area) return;
+  const { meta, blob } = found;
+
+  if (!blob) {
+    area.textContent = t.panel.attachMissing;
+    area.className = 'node-panel-attach-missing';
+    return;
+  }
+
+  if (meta.type.startsWith('image/')) {
+    previewObjectUrl = URL.createObjectURL(blob);
+    const img = document.createElement('img');
+    img.src = previewObjectUrl;
+    img.alt = meta.name;
+    img.className = 'node-panel-attach-img';
+    area.replaceChildren(img);
+  } else if (meta.type === 'text/plain' || meta.type === 'text/markdown') {
+    const text = await blob.text();
+    const pre = document.createElement('pre');
+    pre.className = 'node-panel-attach-text';
+    // textContent — browserul NU interpretează conținutul ca HTML (zero XSS)
+    pre.textContent = text.slice(0, 4000) + (text.length > 4000 ? '\n…' : '');
+    area.replaceChildren(pre);
+  } else {
+    // PDF: preview inline ar cere object/embed (object-src 'none' în CSP) —
+    // se deschide în tab nou prin acțiunea "open"
+    openAttachment(attachId);
+    clearPreview();
+    render();
+  }
+}
+
+async function openAttachment(attachId) {
+  const found = await getAttachment(attachId);
+  if (!found?.blob) return;
+  const url = URL.createObjectURL(found.blob);
+  window.open(url, '_blank', 'noopener');
+  // Revocăm după ce tab-ul nou a preluat resursa
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+async function downloadAttachment(attachId) {
+  const found = await getAttachment(attachId);
+  if (!found?.blob) return;
+  const url = URL.createObjectURL(found.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = found.meta.name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /* ─────────────────────────── Action handling ─────────────────────────── */
 
 function handleClick(e) {
@@ -161,6 +287,18 @@ function handleClick(e) {
   switch (action) {
     case 'close':
       hide();
+      break;
+
+    case 'attach-preview':
+      togglePreview(btn.dataset.attachId);
+      break;
+
+    case 'attach-open':
+      openAttachment(btn.dataset.attachId);
+      break;
+
+    case 'attach-download':
+      downloadAttachment(btn.dataset.attachId);
       break;
 
     case 'toggle-sun': {

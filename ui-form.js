@@ -6,9 +6,14 @@ import { announce } from './dom.js';
 import {
   escapeHtml,
   sanitizeTag,
+  sanitizeFilename,
+  getAttachmentExtension,
+  ATTACHMENT_ALLOWED_TYPES,
+  generateId,
   LIMITS,
 } from './security.js';
 import * as Voice from './ui-voice.js';
+import * as Attachments from './attachments.js';
 
 let formEl = null;
 let titleInput = null;
@@ -22,6 +27,14 @@ let formErrorEl = null;
 let titleErrorEl = null;
 
 let tags = [];
+/**
+ * Atașamente în lucru: {id, name, type, size, addedAt, file?}.
+ * `file` există doar pentru fișierele noi (încă nescrise în IndexedDB);
+ * cele păstrate dintr-o notă editată au doar metadata.
+ */
+let attachments = [];
+let attachListEl = null;
+let attachInputEl = null;
 /** null = add mode; id string = edit mode pentru nota respectivă. */
 let editingId = null;
 
@@ -38,6 +51,8 @@ export function mount(container) {
   formHeading  = container.querySelector('#form-heading');
   formErrorEl  = container.querySelector('#form-error');
   titleErrorEl = container.querySelector('#title-error');
+  attachListEl  = container.querySelector('#attach-list');
+  attachInputEl = container.querySelector('#attach-input');
 
   attachListeners();
   Voice.init(titleInput);
@@ -66,6 +81,8 @@ export function enterEditMode(noteId) {
   contentInput.value = note.content || '';
   tags = [...(note.tags || [])];
   renderChips();
+  attachments = (note.attachments || []).map((a) => ({ ...a }));
+  renderAttachList();
 
   // UI mode switch
   formHeading.textContent = `${t.form.headingEdit}: ${truncate(note.title, 28)}`;
@@ -93,6 +110,8 @@ export function exitEditMode({ silent = false } = {}) {
   formEl.reset();
   tags = [];
   renderChips();
+  attachments = [];
+  renderAttachList();
 
   formHeading.textContent = t.form.headingAdd;
   submitBtn.textContent = t.form.submitAdd;
@@ -181,6 +200,29 @@ function template() {
         <p id="tag-hint" class="mt-1 text-[10px] text-paper-500/60">${escapeHtml(t.form.tagsHint)}</p>
       </div>
 
+      <div>
+        <label for="attach-add" class="flex items-baseline justify-between text-[11px] font-medium text-paper-300 mb-1.5">
+          <span>${escapeHtml(t.form.attachLabel)}</span>
+          <span class="text-paper-500/60 font-normal text-[10px]">${escapeHtml(t.form.optional)}</span>
+        </label>
+        <div id="attach-list" class="space-y-1 mb-1.5"></div>
+        <button
+          id="attach-add"
+          type="button"
+          class="mently-btn w-full text-[11px] text-paper-500/80 hover:text-paper-300 border border-dashed border-ink-800 hover:border-ink-700 rounded-xl py-1.5 transition-colors"
+        >+ ${escapeHtml(t.form.attachAdd)}</button>
+        <input
+          id="attach-input"
+          type="file"
+          class="hidden"
+          multiple
+          accept="${Object.keys(ATTACHMENT_ALLOWED_TYPES).map((e) => '.' + e).join(',')}"
+          aria-hidden="true"
+          tabindex="-1"
+        />
+        <p class="mt-1 text-[10px] text-paper-500/60">${escapeHtml(t.form.attachHint)}</p>
+      </div>
+
       <p id="form-error" class="hidden text-xs text-red-400" role="alert"></p>
 
       <!-- Butoanele de acțiune: Submit + Cancel (Cancel ascuns în add mode) -->
@@ -209,6 +251,19 @@ function attachListeners() {
   tagWrapEl.addEventListener('click', handleTagWrapClick);
   formEl.addEventListener('submit', handleSubmit);
   cancelBtn.addEventListener('click', () => exitEditMode());
+
+  formEl.querySelector('#attach-add').addEventListener('click', () => attachInputEl.click());
+  attachInputEl.addEventListener('change', handleFilesPicked);
+  attachListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-remove-attach]');
+    if (!btn) return;
+    const idx = Number(btn.dataset.removeAttach);
+    if (Number.isInteger(idx) && attachments[idx]) {
+      const removed = attachments.splice(idx, 1)[0];
+      renderAttachList();
+      announce(t.a11y.attachmentRemoved(removed.name));
+    }
+  });
 
   titleInput.addEventListener('input', () => {
     if (titleInput.value.length > 0) hideFieldError(titleErrorEl, titleInput);
@@ -293,7 +348,68 @@ function renderChips() {
   });
 }
 
-function handleSubmit(e) {
+/* ─── Atașamente ─── */
+
+function handleFilesPicked() {
+  const files = [...attachInputEl.files];
+  attachInputEl.value = ''; // permite re-selectarea aceluiași fișier
+
+  for (const file of files) {
+    if (attachments.length >= LIMITS.ATTACHMENTS_MAX_PER_NOTE) {
+      showFormError(t.errors.attachTooMany(LIMITS.ATTACHMENTS_MAX_PER_NOTE));
+      break;
+    }
+    const name = sanitizeFilename(file.name);
+    const ext = name ? getAttachmentExtension(name) : null;
+    if (!ext) {
+      showFormError(t.errors.attachInvalidType(file.name));
+      continue;
+    }
+    if (file.size > LIMITS.ATTACHMENT_MAX_BYTES) {
+      showFormError(t.errors.attachTooLarge(name));
+      continue;
+    }
+    if (file.size === 0) continue;
+
+    attachments.push({
+      id: generateId(),
+      name,
+      type: ATTACHMENT_ALLOWED_TYPES[ext],
+      size: file.size,
+      addedAt: Date.now(),
+      file, // Blob-ul e scris în IndexedDB abia la submit
+    });
+    announce(t.a11y.attachmentAdded(name));
+  }
+  renderAttachList();
+}
+
+function renderAttachList() {
+  if (!attachListEl) return;
+  attachListEl.innerHTML = attachments.map((a, idx) => `
+    <div class="flex items-center gap-2 bg-ink-950/50 border border-ink-800 rounded-lg px-2.5 py-1.5">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-paper-500 flex-shrink-0" aria-hidden="true">
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+      </svg>
+      <span class="text-[11px] text-paper-300 truncate flex-1 font-mono">${escapeHtml(a.name)}</span>
+      <span class="text-[10px] text-paper-500/70 tabular-nums flex-shrink-0">${formatSize(a.size)}</span>
+      <button
+        type="button"
+        data-remove-attach="${idx}"
+        class="text-paper-500 hover:text-red-400 focus-visible:text-red-400 px-0.5 flex-shrink-0"
+        aria-label="${escapeHtml(t.form.removeAttachLabel(a.name))}"
+      >×</button>
+    </div>
+  `).join('');
+}
+
+function formatSize(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function handleSubmit(e) {
   e.preventDefault();
   hideFormError();
   hideFieldError(titleErrorEl, titleInput);
@@ -309,19 +425,34 @@ function handleSubmit(e) {
     title: titleInput.value,
     content: contentInput.value,
     tags: [...tags],
+    attachments: attachments.map(({ file, ...meta }) => meta),
   };
+  // Blob-urile noi se scriu în IndexedDB DUPĂ ce store-ul acceptă nota —
+  // dacă validarea aruncă, nu rămân fișiere orfane.
+  const pendingFiles = attachments.filter((a) => a.file).map((a) => ({ id: a.id, file: a.file }));
 
   try {
+    let note;
     if (editingId) {
-      const note = updateNote(editingId, payload);
+      note = updateNote(editingId, payload);
       if (note) {
         announce(t.a11y.noteUpdated(note.title));
         exitEditMode({ silent: true });
       }
     } else {
-      const note = addNote(payload);
+      note = addNote(payload);
       announce(t.a11y.noteAdded(note.title));
       resetForm();
+    }
+    if (note) {
+      for (const { id, file } of pendingFiles) {
+        try {
+          await Attachments.put(id, file);
+        } catch (err) {
+          console.error('[ui-form] scriere atașament eșuată:', err);
+          showFormError(t.errors.attachStoreFailed);
+        }
+      }
     }
   } catch (err) {
     if (err.code === 'TITLE_REQUIRED') {
@@ -337,6 +468,8 @@ function resetForm() {
   formEl.reset();
   tags = [];
   renderChips();
+  attachments = [];
+  renderAttachList();
   titleInput.focus();
 }
 

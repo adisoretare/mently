@@ -190,6 +190,74 @@ test('parseAndValidateImport: notele invalide sunt sărite, nu strică importul'
   assert.ok(result.notes.every((n) => n.id)); // id-uri generate acolo unde lipseau
 });
 
+/* ─── atașamente ─── */
+
+test('sanitizeFilename: elimină separatoare de path și control chars', async () => {
+  const { sanitizeFilename } = await import('../security.js');
+  assert.equal(sanitizeFilename('../../etc/passwd.pdf'), '....etcpasswd.pdf'); // path traversal neutralizat
+  assert.equal(sanitizeFilename('eseu-moaracunoroc.pdf'), 'eseu-moaracunoroc.pdf');
+  assert.equal(sanitizeFilename('a\x00b.txt'), 'ab.txt');
+  assert.equal(sanitizeFilename(42), null);
+  assert.equal(sanitizeFilename(''), null);
+});
+
+test('sanitizeFilename: extensii în afara allowlist-ului → null', async () => {
+  const { sanitizeFilename } = await import('../security.js');
+  assert.equal(sanitizeFilename('atac.html'), null);
+  assert.equal(sanitizeFilename('atac.svg'), null);
+  assert.equal(sanitizeFilename('atac.js'), null);
+  assert.equal(sanitizeFilename('fara-extensie'), null);
+});
+
+test('validateAttachmentMeta: tipul MIME e derivat din extensie, nu din input', async () => {
+  const { validateAttachmentMeta } = await import('../security.js');
+  const meta = validateAttachmentMeta({ name: 'doc.pdf', type: 'text/html', size: 100 });
+  assert.equal(meta.type, 'application/pdf'); // tipul declarat (mincinos) e ignorat
+});
+
+test('validateAttachmentMeta: dimensiune invalidă sau peste limită → null', async () => {
+  const { validateAttachmentMeta, LIMITS: L } = await import('../security.js');
+  assert.equal(validateAttachmentMeta({ name: 'a.txt', size: 0 }), null);
+  assert.equal(validateAttachmentMeta({ name: 'a.txt', size: -5 }), null);
+  assert.equal(validateAttachmentMeta({ name: 'a.txt', size: L.ATTACHMENT_MAX_BYTES + 1 }), null);
+  assert.equal(validateAttachmentMeta({ name: 'a.txt', size: 'NaN' }), null);
+});
+
+test('sanitizeAttachments: filtrare + dedupe + cap per notă', async () => {
+  const { sanitizeAttachments, LIMITS: L } = await import('../security.js');
+  const raw = [
+    { id: 'a1', name: 'ok.pdf', size: 10 },
+    { id: 'a1', name: 'duplicat.pdf', size: 10 },     // id duplicat → sărit
+    { id: 'a2', name: 'rau.html', size: 10 },          // extensie interzisă → sărit
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `x${i}`, name: `f${i}.txt`, size: 5 })),
+  ];
+  const out = sanitizeAttachments(raw);
+  assert.equal(out.length, L.ATTACHMENTS_MAX_PER_NOTE);
+  assert.equal(out[0].id, 'a1');
+  assert.ok(!out.some((a) => a.name === 'rau.html'));
+});
+
+test('validateNote: atașamentele sunt validate în interiorul notei', () => {
+  const note = validateNote({
+    title: 'cu fișiere',
+    attachments: [
+      { id: 'f1', name: 'eseu.pdf', size: 1024 },
+      { id: 'f2', name: 'exploit.html', size: 10 },
+    ],
+  });
+  assert.equal(note.attachments.length, 1);
+  assert.equal(note.attachments[0].name, 'eseu.pdf');
+});
+
+test('parseAndValidateImport: files acceptă doar id-uri referențiate', () => {
+  const payload = JSON.stringify({
+    notes: [{ title: 'n', attachments: [{ id: 'att-1', name: 'a.txt', size: 5 }] }],
+    files: { 'att-1': 'aGVsbG8=', 'strain': 'ZXZpbA==' },
+  });
+  const result = parseAndValidateImport(payload);
+  assert.deepEqual(Object.keys(result.files), ['att-1']);
+});
+
 /* ─── rate limiter ─── */
 
 test('createRateLimiter: permite maxCalls, apoi refuză', () => {

@@ -87,6 +87,8 @@ function renderModal() {
     { desc: t.shortcuts.rows.focusPrev,  keys: ['←'] },
     { desc: t.shortcuts.rows.focusNext,  keys: ['→'] },
     { desc: t.shortcuts.rows.fullscreen, keys: ['F'] },
+    { desc: t.shortcuts.rows.undo,       keys: ['Ctrl+Z'] },
+    { desc: t.shortcuts.rows.redo,       keys: ['Ctrl+Shift+Z'] },
   ];
 
   const rowsHtml = rows.map(({ desc, keys }) => `

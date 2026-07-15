@@ -148,6 +148,67 @@ test('exportJSON: round-trip prin parseAndValidateImport', async () => {
   assert.equal(result.notes[0].title, 'export me');
 });
 
+/* ─── Undo / Redo ─── */
+
+test('undo/redo: add → undo → redo restaurează exact starea', () => {
+  localStorage.clear();
+  Store.init();
+  assert.equal(Store.canUndo(), false);
+  Store.addNote({ title: 'prima' });
+  assert.equal(Store.canUndo(), true);
+  assert.equal(Store.undo(), true);
+  assert.deepEqual(Store.getNotes(), []);
+  assert.equal(Store.canRedo(), true);
+  assert.equal(Store.redo(), true);
+  assert.equal(Store.getNotes()[0].title, 'prima');
+});
+
+test('undo: ștergerea unei note e reversibilă cu același id', () => {
+  localStorage.clear();
+  Store.init();
+  const { id } = Store.addNote({ title: 'de recuperat', tags: ['x'] });
+  Store.deleteNote(id);
+  assert.deepEqual(Store.getNotes(), []);
+  Store.undo();
+  assert.equal(Store.getNotes()[0].id, id); // id păstrat → poziția în canvas supraviețuiește
+});
+
+test('undo: import (replaceNotes) e reversibil', () => {
+  localStorage.clear();
+  Store.init();
+  Store.addNote({ title: 'pre-import' });
+  Store.replaceNotes([
+    { id: 'imp', title: 'importat', content: '', tags: [], createdAt: Date.now(), updatedAt: Date.now(), collapsed: false, isTask: false, done: false, isSun: false },
+  ]);
+  assert.equal(Store.getNotes()[0].title, 'importat');
+  Store.undo();
+  assert.equal(Store.getNotes()[0].title, 'pre-import');
+});
+
+test('undo: mutație nouă invalidează redo stack-ul', () => {
+  localStorage.clear();
+  Store.init();
+  Store.addNote({ title: 'a' });
+  Store.undo();
+  assert.equal(Store.canRedo(), true);
+  Store.addNote({ title: 'b' }); // mutație nouă
+  assert.equal(Store.canRedo(), false);
+});
+
+test('undo: operație eșuată (titlu gol) NU lasă snapshot orfan', () => {
+  localStorage.clear();
+  Store.init();
+  assert.throws(() => Store.addNote({ title: '' }));
+  assert.equal(Store.canUndo(), false);
+});
+
+test('undo/redo: pe stive goale → false, fără crash', () => {
+  localStorage.clear();
+  Store.init();
+  assert.equal(Store.undo(), false);
+  assert.equal(Store.redo(), false);
+});
+
 /* ─── Limite (cap + rate limit) — ULTIMELE: epuizează limiterul global ─── */
 
 test('addNote: cap NOTES_MAX_COUNT → SecurityError NOTES_CAP_REACHED', () => {

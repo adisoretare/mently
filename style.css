@@ -806,3 +806,113 @@ kbd {
   border-radius: 4px;
   white-space: nowrap;
 }
+
+/* ============================================================
+   Căutare full-text în sidebar (search.js + ui-list.js)
+   ============================================================ */
+
+.list-search-input {
+  width: 100%;
+  background: color-mix(in srgb, var(--c-ink-900) 60%, transparent);
+  border: 1px solid var(--c-ink-800);
+  border-radius: 0.65rem;
+  color: var(--c-paper-100);
+  font-size: 0.8rem;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.2s ease;
+}
+.list-search-input::placeholder { color: color-mix(in srgb, var(--c-paper-500) 70%, transparent); }
+.list-search-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--c-signal-400) 60%, transparent);
+}
+/* butonul nativ de clear al input[type=search] pe WebKit — îl păstrăm vizibil */
+.list-search-input::-webkit-search-cancel-button { cursor: pointer; }
+
+/* Evidențierea match-urilor de căutare în carduri */
+mark {
+  background: color-mix(in srgb, var(--c-signal-400) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+
+/* ============================================================
+   Atașamente în node panel (attachments.js + ui-node-panel.js)
+   ============================================================ */
+
+.node-panel-attachments {
+  margin: 0.4rem 0.9rem 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--c-ink-800) 60%, transparent);
+}
+.node-panel-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.2rem;
+}
+.node-panel-attach-name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.68rem;
+  color: var(--c-paper-300);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem 0.25rem;
+  border-radius: 0.35rem;
+  text-align: left;
+}
+.node-panel-attach-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-panel-attach-name:hover,
+.node-panel-attach-name--active {
+  color: var(--c-signal-400);
+  background: color-mix(in srgb, var(--c-signal-400) 8%, transparent);
+}
+.node-panel-attach-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--c-paper-500);
+  padding: 0.25rem;
+  border-radius: 0.3rem;
+  flex-shrink: 0;
+}
+.node-panel-attach-action:hover { color: var(--c-signal-400); }
+.node-panel-attach-img {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 0.4rem;
+  margin-top: 0.3rem;
+  display: block;
+}
+.node-panel-attach-text {
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 0.62rem;
+  line-height: 1.5;
+  color: var(--c-paper-500);
+  background: color-mix(in srgb, var(--c-ink-950) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-ink-800) 70%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  margin-top: 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.node-panel-attach-missing {
+  font-size: 0.65rem;
+  color: var(--c-paper-500);
+  font-style: italic;
+  margin-top: 0.3rem;
+}

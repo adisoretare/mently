@@ -28,6 +28,10 @@ const ro = {
     requiredHint: '(obligatoriu)',
     tagsAddedLabel: 'Tag-uri adăugate',
     removeTagLabel: (tag) => `Șterge tag ${tag}`,
+    attachLabel: 'Fișiere atașate',
+    attachAdd: 'Atașează fișier (PDF, text, imagine)',
+    attachHint: 'Max 5 fișiere × 10 MB: pdf, txt, md, png, jpg, webp.',
+    removeAttachLabel: (name) => `Elimină fișierul ${name}`,
   },
 
   list: {
@@ -47,6 +51,9 @@ const ro = {
     deleteConfirm: 'Confirmă ștergerea',
     exportBtn: 'Export',
     importBtn: 'Import',
+    searchPlaceholder: 'Caută în notițe…',
+    searchLabel: 'Caută în notițe după titlu, conținut sau tag',
+    searchNoResults: 'Nicio notiță nu se potrivește căutării.',
   },
 
   errors: {
@@ -56,8 +63,12 @@ const ro = {
     tagsTooMany: 'Maxim 10 tag-uri per notiță.',
     duplicateTag: 'Tag-ul există deja în această notiță.',
     invalidTag: 'Tag invalid (folosește litere, cifre, cratimă).',
-    importTooLarge: 'Fișier prea mare (maxim 5 MB).',
+    importTooLarge: 'Fișier prea mare (maxim 64 MB).',
     importFailed: (msg) => `Import eșuat: ${msg}`,
+    attachInvalidType: (name) => `Tip de fișier nepermis: ${name}. Acceptate: pdf, txt, md, png, jpg, webp.`,
+    attachTooLarge: (name) => `Fișierul ${name} depășește 10 MB.`,
+    attachTooMany: (max) => `Maxim ${max} fișiere per notiță.`,
+    attachStoreFailed: 'Fișierul nu a putut fi salvat local (stocare indisponibilă).',
     storageDisabled: 'Stocare locală indisponibilă — modificările nu vor fi păstrate la reîncărcare.',
     storageQuota: 'Stocare locală plină — eliberează spațiu sau exportă graful.',
     unknown: 'Eroare necunoscută.',
@@ -96,6 +107,11 @@ const ro = {
     deleteConfirmLabel: 'Confirmă ștergerea',
     focusLabel: 'Focus',
     descriptionEmpty: 'Fără descriere.',
+    attachmentsHeading: 'Fișiere atașate',
+    attachPreviewLabel: (name) => `Previzualizează ${name}`,
+    attachOpenLabel: (name) => `Deschide ${name} în tab nou`,
+    attachDownloadLabel: (name) => `Descarcă ${name}`,
+    attachMissing: 'Fișierul lipsește din stocarea locală.',
   },
 
   a11y: {
@@ -143,6 +159,9 @@ const ro = {
     focusStep: (i, total, title) => `Pasul ${i} din ${total}: ${title}.`,
     focusExited: 'Focus oprit.',
     tasksToggled: (expanded) => expanded ? 'Secțiunea Tasks extinsă.' : 'Secțiunea Tasks restrânsă.',
+    searchResults: (n) => n === 1 ? '1 rezultat găsit.' : `${n} rezultate găsite.`,
+    attachmentAdded: (name) => `Fișierul "${name}" a fost atașat.`,
+    attachmentRemoved: (name) => `Fișierul "${name}" a fost eliminat.`,
   },
 
   tasks: {
@@ -174,6 +193,13 @@ const ro = {
     switchLabel: 'Switch to English',
   },
 
+  history: {
+    undoLabel: 'Anulează ultima acțiune (Ctrl+Z)',
+    redoLabel: 'Refă acțiunea anulată (Ctrl+Shift+Z)',
+    undone: 'Acțiune anulată.',
+    redone: 'Acțiune refăcută.',
+  },
+
   theme: {
     toggleLabel: 'Toggle theme',
     lightLabel: 'Light mode',
@@ -199,6 +225,8 @@ const ro = {
       focusPrev: 'Mod focus — anterior',
       focusNext: 'Mod focus — următor',
       fullscreen: 'Ecran complet',
+      undo: 'Anulează acțiunea',
+      redo: 'Refă acțiunea',
     },
   },
 };
@@ -231,6 +259,10 @@ const en = {
     requiredHint: '(required)',
     tagsAddedLabel: 'Added tags',
     removeTagLabel: (tag) => `Remove tag ${tag}`,
+    attachLabel: 'Attached files',
+    attachAdd: 'Attach file (PDF, text, image)',
+    attachHint: 'Max 5 files × 10 MB: pdf, txt, md, png, jpg, webp.',
+    removeAttachLabel: (name) => `Remove file ${name}`,
   },
 
   list: {
@@ -250,6 +282,9 @@ const en = {
     deleteConfirm: 'Confirm deletion',
     exportBtn: 'Export',
     importBtn: 'Import',
+    searchPlaceholder: 'Search notes…',
+    searchLabel: 'Search notes by title, content or tag',
+    searchNoResults: 'No notes match your search.',
   },
 
   errors: {
@@ -259,8 +294,12 @@ const en = {
     tagsTooMany: 'Maximum 10 tags per note.',
     duplicateTag: 'Tag already exists in this note.',
     invalidTag: 'Invalid tag (use letters, digits, hyphens).',
-    importTooLarge: 'File too large (max 5 MB).',
+    importTooLarge: 'File too large (max 64 MB).',
     importFailed: (msg) => `Import failed: ${msg}`,
+    attachInvalidType: (name) => `File type not allowed: ${name}. Accepted: pdf, txt, md, png, jpg, webp.`,
+    attachTooLarge: (name) => `File ${name} exceeds 10 MB.`,
+    attachTooMany: (max) => `Maximum ${max} files per note.`,
+    attachStoreFailed: 'File could not be saved locally (storage unavailable).',
     storageDisabled: 'Local storage unavailable — changes will not persist on reload.',
     storageQuota: 'Local storage full — free up space or export the graph.',
     unknown: 'Unknown error.',
@@ -299,6 +338,11 @@ const en = {
     deleteConfirmLabel: 'Confirm deletion',
     focusLabel: 'Focus',
     descriptionEmpty: 'No description.',
+    attachmentsHeading: 'Attached files',
+    attachPreviewLabel: (name) => `Preview ${name}`,
+    attachOpenLabel: (name) => `Open ${name} in new tab`,
+    attachDownloadLabel: (name) => `Download ${name}`,
+    attachMissing: 'File is missing from local storage.',
   },
 
   a11y: {
@@ -346,6 +390,9 @@ const en = {
     focusStep: (i, total, title) => `Step ${i} of ${total}: ${title}.`,
     focusExited: 'Focus stopped.',
     tasksToggled: (expanded) => expanded ? 'Tasks section expanded.' : 'Tasks section collapsed.',
+    searchResults: (n) => n === 1 ? '1 result found.' : `${n} results found.`,
+    attachmentAdded: (name) => `File "${name}" attached.`,
+    attachmentRemoved: (name) => `File "${name}" removed.`,
   },
 
   tasks: {
@@ -377,6 +424,13 @@ const en = {
     switchLabel: 'Schimbă în română',
   },
 
+  history: {
+    undoLabel: 'Undo last action (Ctrl+Z)',
+    redoLabel: 'Redo undone action (Ctrl+Shift+Z)',
+    undone: 'Action undone.',
+    redone: 'Action redone.',
+  },
+
   theme: {
     toggleLabel: 'Toggle theme',
     lightLabel: 'Light mode',
@@ -402,6 +456,8 @@ const en = {
       focusPrev: 'Focus mode — previous',
       focusNext: 'Focus mode — next',
       fullscreen: 'Fullscreen toggle',
+      undo: 'Undo action',
+      redo: 'Redo action',
     },
   },
 };

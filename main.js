@@ -24,6 +24,7 @@ import * as Focus from './focus.js';
 import * as Fullscreen from './ui-fullscreen.js';
 import * as Hash from './url-hash.js';
 import * as Shortcuts from './ui-shortcuts.js';
+import * as Attachments from './attachments.js';
 import { t, initLanguage } from './i18n.js';
 
 function boot() {
@@ -54,6 +55,17 @@ function boot() {
     Store.setStorageErrorReporter((type) => {
       const msg = type === 'quota' ? t.errors.storageQuota : t.errors.storageDisabled;
       UI.announce(msg);
+    });
+
+    // GC atașamente orfane — la boot, DUPĂ Store.init(): blob-urile șterse
+    // nu sunt eliminate imediat (undo trebuie să le poată restaura), ci aici,
+    // când istoricul de undo pornește oricum de la zero. Fire-and-forget.
+    const referenced = new Set();
+    for (const note of Store.getNotes()) {
+      for (const att of (note.attachments || [])) referenced.add(att.id);
+    }
+    Attachments.gcOrphans(referenced).then((n) => {
+      if (n > 0) console.info(`[Mently] ${n} atașamente orfane curățate.`);
     });
 
     if (isDev()) {

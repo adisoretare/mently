@@ -4,10 +4,15 @@ import { t } from './i18n.js';
 import { getNotes, deleteNote, clearAll, getNoteById, exportJSON, replaceNotes } from './store.js';
 import { announce } from './dom.js';
 import { escapeHtml, parseAndValidateImport, LIMITS } from './security.js';
+import { filterNotes, highlightHtml } from './search.js';
+import * as Attachments from './attachments.js';
 
 let containerEl = null;
+let itemsEl = null;      // sub-containerul re-randat; separat de căsuța de căutare
 let selectedId = null;
 let activeTag = null;
+let searchQuery = '';
+let searchDebounce = null;
 
 let clearAllArmed = false;
 let clearAllTimer = null;
@@ -22,17 +27,66 @@ const editListeners = new Set();
 
 export function mount(container) {
   containerEl = container;
+
+  // STRUCTURĂ ÎN DOUĂ PĂRȚI: căsuța de căutare e montată O SINGURĂ DATĂ
+  // (dacă ar fi în render(), rebuild-ul innerHTML i-ar distruge focusul și
+  // valoarea la fiecare tastă). Doar #list-items se re-randează.
+  containerEl.innerHTML = `
+    <div id="list-search" class="mb-3"></div>
+    <div id="list-items"></div>
+  `;
+  itemsEl = containerEl.querySelector('#list-items');
+  mountSearchBox(containerEl.querySelector('#list-search'));
+
   containerEl.addEventListener('click', handleClick);
   containerEl.addEventListener('keydown', handleKeydown);
 }
 
+function mountSearchBox(wrapper) {
+  wrapper.innerHTML = `
+    <input
+      type="search"
+      id="note-search"
+      class="list-search-input"
+      placeholder="${escapeHtml(t.list.searchPlaceholder)}"
+      aria-label="${escapeHtml(t.list.searchLabel)}"
+      autocomplete="off"
+    />
+  `;
+  const input = wrapper.querySelector('#note-search');
+
+  input.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      searchQuery = input.value;
+      const visible = filterNotes(getNotes(), searchQuery);
+      render(getNotes());
+      if (searchQuery.trim()) announce(t.a11y.searchResults(visible.length));
+    }, 150); // debounce: nu re-randăm la fiecare tastă
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && input.value) {
+      e.stopPropagation(); // nu închide drawer-ul / nu iese din fullscreen
+      input.value = '';
+      searchQuery = '';
+      render(getNotes());
+    }
+  });
+}
+
 export function render(notes) {
-  if (!containerEl) return;
+  if (!itemsEl) return;
+
+  // Căsuța de căutare apare doar când există note
+  const searchWrap = containerEl.querySelector('#list-search');
+  if (searchWrap) searchWrap.style.display = notes.length === 0 ? 'none' : '';
 
   if (notes.length === 0) {
-    containerEl.innerHTML = renderEmpty();
+    itemsEl.innerHTML = renderEmpty();
     selectedId = null;
     activeTag = null;
+    searchQuery = '';
     disarmClearAll();
     disarmDelete();
     return;
@@ -47,19 +101,23 @@ export function render(notes) {
     notifyTag(null);
   }
 
-  containerEl.innerHTML = `
+  const visible = filterNotes(notes, searchQuery);
+  const isFiltered = searchQuery.trim().length > 0;
+  const countLabel = isFiltered
+    ? `${visible.length}/${notes.length}`
+    : (notes.length === 1 ? t.list.countOne : t.list.countMany(notes.length));
+
+  itemsEl.innerHTML = `
     <header class="flex items-baseline justify-between mb-3">
       <h2 class="text-[11px] uppercase tracking-[0.18em] text-paper-500/80">${escapeHtml(t.list.heading)}</h2>
-      <span class="text-[11px] font-mono text-paper-500/80 tabular-nums">
-        ${notes.length === 1 ? escapeHtml(t.list.countOne) : escapeHtml(t.list.countMany(notes.length))}
-      </span>
+      <span class="text-[11px] font-mono text-paper-500/80 tabular-nums">${escapeHtml(countLabel)}</span>
     </header>
 
     ${activeTag ? renderActiveFilter(activeTag) : ''}
 
-    <ul class="space-y-2" role="list">
-      ${notes.map(renderCard).join('')}
-    </ul>
+    ${visible.length === 0
+      ? `<p class="text-xs text-paper-500/70 text-center py-4">${escapeHtml(t.list.searchNoResults)}</p>`
+      : `<ul class="space-y-2" role="list">${visible.map(renderCard).join('')}</ul>`}
 
     ${renderClearAll()}
   `;
@@ -154,12 +212,12 @@ export function renderCard(note) {
               </svg>
             </span>
           ` : ''}
-          <h3 class="mently-card-title text-sm font-medium text-paper-100 leading-snug pr-14">${escapeHtml(note.title)}</h3>
+          <h3 class="mently-card-title text-sm font-medium text-paper-100 leading-snug pr-14">${highlightHtml(note.title, searchQuery, escapeHtml)}</h3>
         </div>
 
         ${hasContent ? `
           <p class="mt-1 text-xs text-paper-500/90 leading-relaxed line-clamp-2">
-            ${escapeHtml(note.content)}
+            ${highlightHtml(note.content, searchQuery, escapeHtml)}
           </p>
         ` : ''}
 
@@ -167,6 +225,13 @@ export function renderCard(note) {
           <ul class="mt-2 flex flex-wrap gap-1" role="list">
             ${note.tags.map((tag) => renderTagChip(tag)).join('')}
           </ul>
+        ` : ''}
+
+        ${(note.attachments && note.attachments.length > 0) ? `
+          <span class="mt-1.5 inline-flex items-center gap-1 text-[10px] text-paper-500/70 font-mono" title="${escapeHtml(note.attachments.map((a) => a.name).join(', '))}">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            ${note.attachments.length}
+          </span>
         ` : ''}
 
         <!-- Action icons row (edit + delete) -->
@@ -365,9 +430,24 @@ function handleKeydown(e) {
   toggleSelect(card.dataset.noteId);
 }
 
-function handleExport() {
+async function handleExport() {
   const json = exportJSON();
-  const blob = new Blob([json], { type: 'application/json' });
+
+  // Împachetăm și fișierele atașate (base64) → un singur JSON portabil.
+  // Blob-urile lipsă (IndexedDB golit manual) sunt sărite — metadata rămâne.
+  const payload = JSON.parse(json);
+  const files = {};
+  for (const note of getNotes()) {
+    for (const att of (note.attachments || [])) {
+      try {
+        const blob = await Attachments.get(att.id);
+        if (blob) files[att.id] = await Attachments.blobToBase64(blob);
+      } catch { /* IndexedDB indisponibil — exportăm doar notele */ }
+    }
+  }
+  if (Object.keys(files).length > 0) payload.files = files;
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -394,8 +474,24 @@ function handleImport() {
 
     try {
       const text = await file.text();
-      const { notes, importedCount, skippedCount } = parseAndValidateImport(text);
+      const { notes, files, importedCount, skippedCount } = parseAndValidateImport(text);
       replaceNotes(notes);
+
+      // Restaurăm blob-urile atașamentelor în IndexedDB. Verificăm dimensiunea
+      // REALĂ a blob-ului decodat (base64-ul poate minți în metadata).
+      for (const note of notes) {
+        for (const att of (note.attachments || [])) {
+          const b64 = files?.[att.id];
+          if (!b64) continue;
+          try {
+            const blob = Attachments.base64ToBlob(b64, att.type);
+            if (blob.size > 0 && blob.size <= LIMITS.ATTACHMENT_MAX_BYTES) {
+              await Attachments.put(att.id, blob);
+            }
+          } catch { /* base64 corupt — sărim fișierul, nota rămâne */ }
+        }
+      }
+
       announce(t.a11y.imported(importedCount, skippedCount));
       clearImportError();
     } catch (err) {
