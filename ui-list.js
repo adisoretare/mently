@@ -196,6 +196,10 @@ export function setActiveTag(tag) {
 
 // Starea „nicio notiță": un mesaj prietenos în locul unei liste goale.
 function renderEmpty() {
+  // Butonul de import rămâne disponibil și pe graf gol — altfel un utilizator
+  // cu un backup JSON (sau demo-data.json) nu ar avea de unde să-l încarce.
+  // Merge prin aceeași delegare de evenimente: data-action="import" e prins
+  // de handleClick pe container, indiferent unde apare butonul.
   return `
     <section aria-label="${escapeHtml(t.list.heading)}" class="bg-ink-900/30 border border-dashed border-ink-800/80 rounded-2xl p-6 text-center">
       <!-- animate-float definit în style.css — oscilație lentă, dezactivat la reduced-motion -->
@@ -207,6 +211,19 @@ function renderEmpty() {
       <p class="mt-3 text-xs text-paper-500/70 leading-relaxed">
         ${escapeHtml(t.list.empty)}
       </p>
+      ${importError ? `<p class="mt-3 text-xs text-red-400" role="alert">${escapeHtml(importError)}</p>` : ''}
+      <button
+        type="button"
+        data-action="import"
+        class="mently-btn mt-4 inline-flex items-center gap-1.5 text-[11px] text-paper-500/80 hover:text-paper-300 border border-ink-800 hover:border-ink-700 rounded-xl px-4 py-2 transition-colors"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 5 17 10"/>
+          <line x1="12" y1="5" x2="12" y2="17"/>
+        </svg>
+        ${escapeHtml(t.list.importBtn)}
+      </button>
     </section>
   `;
 }
