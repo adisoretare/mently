@@ -14,4 +14,5 @@ jobs:
         with:
           node-version: 22
       # Zero dependențe: runner-ul de teste e cel nativ din Node (node:test).
-      - run: node --test tests/
+      # Glob explicit — forma `tests/` (cu slash) nu e rezolvată consistent ca director.
+      - run: node --test tests/*.test.mjs

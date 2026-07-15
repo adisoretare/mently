@@ -41,7 +41,7 @@ npx serve .
 **Teste automate** (103 teste unitare, zero dependențe — runner-ul nativ din Node.js ≥ 20):
 
 ```bash
-node --test tests/
+node --test tests/*.test.mjs
 ```
 
 Testele acoperă modulele pure: algoritmii de graf (`graph.js`), simularea fizică (`physics.js`), stratul de securitate (`security.js` — inclusiv vectori de prototype pollution și XSS), store-ul cu undo/redo (`store.js`) și căutarea cu diacritice (`search.js`). Rulează automat la fiecare push prin GitHub Actions (`.github/workflows/test.yml`).
