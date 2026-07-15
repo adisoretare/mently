@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "notes": [
+    { "id": "demo-blaga", "title": "Lucian Blaga — expresionism", "content": "Eu nu strivesc corola de minuni a lumii. Cunoașterea luciferică vs paradisiacă.", "tags": ["bac-romana", "poezie"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-moara", "title": "Moara cu noroc — Slavici", "content": "Nuvelă realist-psihologică. Ghiță: dezumanizarea prin patima banului. Citate cheie pentru eseu.", "tags": ["bac-romana", "proza"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-ion", "title": "Ion — Rebreanu", "content": "Roman obiectiv interbelic. Glasul pământului / glasul iubirii.", "tags": ["bac-romana", "proza"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-eminescu", "title": "Luceafărul — Eminescu", "content": "Poem romantic. Antiteza geniu / omul comun. Hyperion.", "tags": ["bac-romana", "poezie"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-eseu-task", "title": "Scrie eseul la Moara cu noroc", "content": "Structură: temă+viziune, 2 scene, concluzie. Atașează PDF-ul final aici.", "tags": ["bac-romana"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": true, "done": false, "isSun": false },
+
+    { "id": "demo-bfs", "title": "BFS — parcurgere în lățime", "content": "Coadă FIFO, distanțe minime în graf neponderat. O(V+E).", "tags": ["olimpiada-info", "grafuri"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-dfs", "title": "DFS și componente conexe", "content": "Stivă/recursie. Detectare cicluri, sortare topologică.", "tags": ["olimpiada-info", "grafuri"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-centroid", "title": "Centroidul unui arbore", "content": "Nodul care minimizează subarborele maxim adiacent. Folosit chiar în Mently pentru alegerea soarelui!", "tags": ["olimpiada-info", "grafuri", "arbori"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-dp", "title": "Programare dinamică — rucsac", "content": "dp[i][g] = profit maxim cu primele i obiecte și greutate g.", "tags": ["olimpiada-info", "dp"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-fr", "title": "Fruchterman-Reingold", "content": "Layout force-directed: repulsie Coulomb + atracție Hooke + răcire alpha.", "tags": ["grafuri", "vizualizare"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+
+    { "id": "demo-fotosinteza", "title": "Fotosinteza", "content": "Faza de lumină și faza de întuneric (ciclul Calvin). 6CO2 + 6H2O → C6H12O6 + 6O2.", "tags": ["biologie", "invatare"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-respiratie", "title": "Respirația celulară", "content": "Glicoliză → ciclul Krebs → lanțul respirator. 36-38 ATP.", "tags": ["biologie", "invatare"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false },
+    { "id": "demo-recap-bio", "title": "Recapitulare biologie — test joi", "content": "Focus mode pe acest nod → parcurge tot subarborele de biologie.", "tags": ["biologie"], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": true, "done": false, "isSun": false },
+
+    { "id": "demo-idee", "title": "Idee: jurnal de învățare săptămânal", "content": "Notiță izolată — încă fără conexiuni. Adaugă un tag comun și privește-o cum orbitează.", "tags": [], "createdAt": 1767225600000, "updatedAt": 1767225600000, "collapsed": false, "isTask": false, "done": false, "isSun": false }
+  ],
+  "meta": { "createdAt": 1767225600000, "updatedAt": 1767225600000, "lastExportAt": null }
+}
