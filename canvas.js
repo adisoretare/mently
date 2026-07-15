@@ -852,7 +852,9 @@ function renderNodeLabel(node, note, r, prominent) {
   if (prominent) {
     const metrics = ctx.measureText(label);
     const padX = 6, padY = 3;
-    ctx.fillStyle = 'rgba(12,10,9,0.88)';
+    // Fundalul pill-ului vine din paletă (nu hardcodat): pe tema light devine
+    // deschis, iar textul paper-100 devine închis → contrast corect în ambele teme
+    ctx.fillStyle = hexToRgba(PALETTE.ink950, 0.88);
     ctx.beginPath();
     roundRect(ctx, node.x - metrics.width / 2 - padX, labelY - padY + 1, metrics.width + padX * 2, 14 + padY * 2, 3);
     ctx.fill();

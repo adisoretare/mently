@@ -7,7 +7,7 @@
 // ÎNTREȚINERE: la ORICE deploy care modifică un asset, incrementează CACHE —
 // activate șterge cache-urile vechi și clients.claim() preia imediat controlul.
 
-const CACHE = 'mently-v1';
+const CACHE = 'mently-v2';
 
 const ASSETS = [
   './',
