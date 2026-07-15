@@ -24,8 +24,8 @@
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src 'self';
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    font-src 'self' data: https://fonts.gstatic.com;
+    style-src 'self' 'unsafe-inline';
+    font-src 'self';
     img-src 'self' data: blob:;
     connect-src 'self';
     object-src 'none';
@@ -40,17 +40,17 @@
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
 
+  <!-- PWA: instalabilă + offline prin sw.js (înregistrat în main.js) -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+
   <!-- Favicon inline (SVG data-URI) — zero requests HTTP, on-brand -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0a09'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='Georgia,serif' font-style='italic' font-size='22' fill='%23fb923c'%3EM%3C/text%3E%3C/svg%3E" />
 
   <link rel="stylesheet" href="./tailwind.css" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap"
-    rel="stylesheet"
-  />
+  <!-- Fonturi self-hosted (fonts/) — zero request-uri externe, funcționează offline,
+       permite CSP font-src 'self' strict. Subsetul latin-ext acoperă diacriticele românești. -->
+  <link rel="stylesheet" href="./fonts/fonts.css" />
 
   <link rel="stylesheet" href="./style.css" />
 </head>

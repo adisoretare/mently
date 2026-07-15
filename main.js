@@ -82,6 +82,14 @@ function boot() {
       );
     }
 
+    // PWA: service worker pentru offline. DOAR în producție — în dev cache-ul
+    // ar servi module vechi la fiecare editare de cod.
+    if (!isDev() && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch((err) => {
+        console.warn('[Mently] Service worker indisponibil:', err);
+      });
+    }
+
     console.info('[Mently] Initialized ✓');
   } catch (err) {
     renderFatalError(err);

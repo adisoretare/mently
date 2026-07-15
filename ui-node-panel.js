@@ -11,7 +11,7 @@
 import { getNoteById, updateNote, deleteNote, subscribe } from './store.js';
 import { escapeHtml } from './security.js';
 import { announce } from './dom.js';
-import { t } from './i18n.js';
+import { t, getCurrentLanguage } from './i18n.js';
 import * as Attachments from './attachments.js';
 
 /* ─────────────────────────── Module state ─────────────────────────── */
@@ -29,6 +29,8 @@ let deleteArmed = false;
 /** Atașamentul cu preview deschis (id) + URL-ul de obiect activ (de revocat). */
 let previewAttachId = null;
 let previewObjectUrl = null;
+/** Text-to-speech activ (Web Speech API — direcția de OUTPUT; input-ul vocal e în ui-voice.js). */
+let isReading = false;
 
 /* ─────────────────────────── Public API ─────────────────────────── */
 
@@ -67,9 +69,39 @@ export function hide() {
   currentId   = null;
   deleteArmed = false;
   clearPreview();
+  stopReading();
   panelEl.classList.add('hidden');
   stopPositionLoop();
   announce(t.a11y.panelClosed);
+}
+
+/* ─────────────────────────── Text-to-speech (Cap. III: "text to speech") ─── */
+
+function stopReading() {
+  if (!isReading) return;
+  isReading = false;
+  try { speechSynthesis.cancel(); } catch { /* API absent/blocat — non-fatal */ }
+}
+
+/**
+ * Citește titlul + descrierea notei cu vocea limbii active (ro-RO / en-US).
+ * Complementul lui ui-voice.js (speech-to-text) — ambele direcții vocale acoperite.
+ */
+function toggleReadAloud(note) {
+  if (isReading) {
+    stopReading();
+    render();
+    return;
+  }
+  const text = note.content ? `${note.title}. ${note.content}` : note.title;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = getCurrentLanguage() === 'ro' ? 'ro-RO' : 'en-US';
+  utterance.onend = () => { isReading = false; if (currentId) render(); };
+  utterance.onerror = () => { isReading = false; if (currentId) render(); };
+  isReading = true;
+  speechSynthesis.cancel(); // curăță orice coadă rămasă
+  speechSynthesis.speak(utterance);
+  render();
 }
 
 export function refresh() {
@@ -139,6 +171,13 @@ function render() {
           ${focusIcon()}
           <span>${escapeHtml(t.panel.focusLabel)}</span>
         </button>
+
+        ${'speechSynthesis' in window ? `
+          <button class="node-panel-btn node-panel-btn--ghost ${isReading ? 'node-panel-btn--active' : ''}" data-action="read-aloud">
+            ${speakerIcon()}
+            <span>${escapeHtml(isReading ? t.panel.stopReadingLabel : t.panel.readAloudLabel)}</span>
+          </button>
+        ` : ''}
 
         <div class="node-panel-divider"></div>
 
@@ -301,6 +340,10 @@ function handleClick(e) {
       downloadAttachment(btn.dataset.attachId);
       break;
 
+    case 'read-aloud':
+      toggleReadAloud(note);
+      break;
+
     case 'toggle-sun': {
       if (note.isSun) {
         updateNote(currentId, { isSun: false });
@@ -445,6 +488,10 @@ function editIcon() {
 
 function deleteIcon() {
   return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+}
+
+function speakerIcon() {
+  return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`;
 }
 
 function focusIcon() {

@@ -12,7 +12,7 @@
  */
 
 import { subscribe, getNotes, getNoteById, updateNote, undo, redo, canUndo, canRedo } from './store.js';
-import { buildGraphModel } from './graph.js';
+import { buildGraphModel, describeNode } from './graph.js';
 import { setAriaLive, announce } from './dom.js';
 import { escapeHtml } from './security.js';
 import { t, setLanguage, getCurrentLanguage } from './i18n.js';
@@ -70,7 +70,7 @@ export function init() {
       id ? NodePanel.show(id) : NodePanel.hide();
       if (id) {
         const note = getNoteById(id);
-        if (note) announce(t.a11y.nodeSelected(note.title));
+        if (note) announce(`${t.a11y.nodeSelected(note.title)} ${nodeContextText(id)}`);
       }
     },
     onEdit: (id) => {
@@ -114,7 +114,7 @@ export function init() {
     Hash.setNodeHash(id);
     if (id) {
       const note = getNoteById(id);
-      if (note) announce(t.a11y.nodeSelected(note.title));
+      if (note) announce(`${t.a11y.nodeSelected(note.title)} ${nodeContextText(id)}`);
     }
   });
   Canvas.onSelect((id) => {
@@ -174,6 +174,12 @@ function initUndoRedo() {
     if (key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); }
     else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); doRedo(); }
   });
+}
+
+/** Context de graf pentru anunțuri (screen readers) — canvas-ul e aria-hidden. */
+function nodeContextText(id) {
+  if (!cachedModel) return '';
+  return t.a11y.nodeContext(describeNode(id, cachedModel));
 }
 
 /* ─────────────────────────── Zoom controls ─────────────────────────── */
@@ -344,6 +350,7 @@ function handleStateChange() {
   cachedModel = model;
 
   syncUndoRedoButtons();
+  renderGraphSummary(model, notes);
 
   if (statsEl) {
     statsEl.innerHTML = `
@@ -370,6 +377,43 @@ function handleStateChange() {
     if (h) h.textContent = t.meta.blank;
     if (p) p.textContent = t.meta.blankHint;
   }
+}
+
+/**
+ * Rezumat non-vizual al structurii grafului pentru screen readers.
+ * Canvas-ul e aria-hidden (pixeli, nu semantică) — acest <ul> ascuns vizual e
+ * reprezentarea lui accesibilă: fiecare grup cu mărimea și soarele lui.
+ * Re-randat doar la mutații de store (ieftin), nu per-frame.
+ */
+function renderGraphSummary(model, notes) {
+  const wrapper = document.getElementById('canvas-wrapper');
+  if (!wrapper) return;
+
+  let el = document.getElementById('graph-summary');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'graph-summary';
+    el.className = 'sr-only';
+    wrapper.appendChild(el);
+  }
+  el.setAttribute('aria-label', t.a11y.graphSummaryLabel);
+
+  const titleById = new Map(notes.map((n) => [n.id, n.title]));
+  const items = [];
+  let isolated = 0;
+  let groupIdx = 0;
+  for (const comp of model.components) {
+    if (comp.size === 1) { isolated++; continue; }
+    groupIdx++;
+    let sunTitle = '';
+    for (const id of comp) {
+      if (model.sunIds.has(id)) { sunTitle = titleById.get(id) ?? ''; break; }
+    }
+    items.push(`<li>${escapeHtml(t.a11y.graphSummaryGroup(groupIdx, comp.size, sunTitle))}</li>`);
+  }
+  if (isolated > 0) items.push(`<li>${escapeHtml(t.a11y.graphSummaryIsolated(isolated))}</li>`);
+
+  el.innerHTML = items.length ? `<ul>${items.join('')}</ul>` : '';
 }
 
 function statCard(label, value) {

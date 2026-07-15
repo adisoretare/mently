@@ -12,6 +12,7 @@ import {
   nodesWithTag,
   getTagFrequency,
   buildGraphModel,
+  describeNode,
 } from '../graph.js';
 
 /** Helper: notă minimă pentru testele de graf. */
@@ -191,4 +192,28 @@ test('buildGraphModel: componentIndexById mapează fiecare nod la componenta sa'
   assert.equal(model.componentIndexById.get('a'), model.componentIndexById.get('b'));
   assert.equal(model.componentIndexById.get('c'), model.componentIndexById.get('d'));
   assert.notEqual(model.componentIndexById.get('a'), model.componentIndexById.get('c'));
+});
+
+test('describeNode: context complet pentru o planetă', () => {
+  const notes = [mkNote('a', ['t1']), mkNote('b', ['t1', 't2']), mkNote('c', ['t2'])];
+  const model = buildGraphModel(notes);
+  const d = describeNode('a', model);
+  assert.equal(d.title, 'a');
+  assert.equal(d.isSun, false);
+  assert.equal(d.sunTitle, 'b');
+  assert.equal(d.componentSize, 3);
+  assert.equal(d.neighborCount, 1);
+  assert.deepEqual(d.neighbors[0], { title: 'b', sharedTags: ['t1'] });
+});
+
+test('describeNode: soarele își cunoaște statutul; nod izolat fără vecini', () => {
+  const notes = [mkNote('a', ['t1']), mkNote('b', ['t1']), mkNote('solo')];
+  const model = buildGraphModel(notes);
+  const suns = [...model.sunIds].filter((id) => id !== 'solo');
+  const sun = describeNode(suns[0], model);
+  assert.equal(sun.isSun, true);
+  assert.equal(sun.sunTitle, null);
+  const solo = describeNode('solo', model);
+  assert.equal(solo.neighborCount, 0);
+  assert.equal(describeNode('inexistent', model), null);
 });

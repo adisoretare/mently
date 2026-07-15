@@ -371,3 +371,48 @@ export function buildGraphModel(notes, sunOverrideId = null) {
 
   return { nodes: notes, edges, adjacency, tagFrequency, components, componentIndexById, sunIds, depths, childCounts, bfsParent, hiddenIds };
 }
+
+/**
+ * Descriere structurată a unui nod pentru accesibilitate (screen readers).
+ * Canvas-ul e aria-hidden — asta e reprezentarea NON-vizuală a poziției
+ * nodului în graf: al cui "soare" e, cu cine e conectat și prin ce tag-uri.
+ * Funcție pură → testabilă headless.
+ *
+ * @param {string} id
+ * @param {ReturnType<typeof buildGraphModel>} model
+ * @returns {null | {
+ *   title: string, depth: number, isSun: boolean,
+ *   sunTitle: string|null, componentSize: number,
+ *   neighborCount: number, neighbors: Array<{title: string, sharedTags: string[]}>
+ * }}
+ */
+export function describeNode(id, model) {
+  const titleById = new Map(model.nodes.map((n) => [n.id, n.title]));
+  if (!titleById.has(id)) return null;
+
+  const compIdx = model.componentIndexById.get(id);
+  const comp = compIdx !== undefined ? model.components[compIdx] : new Set([id]);
+
+  let sunTitle = null;
+  for (const nid of comp) {
+    if (model.sunIds.has(nid) && nid !== id) { sunTitle = titleById.get(nid) ?? null; break; }
+  }
+
+  const neighborIds = [...(model.adjacency.get(id) ?? [])];
+  const neighbors = neighborIds.slice(0, 5).map((nid) => {
+    const edge = model.edges.find(
+      (e) => (e.source === id && e.target === nid) || (e.source === nid && e.target === id)
+    );
+    return { title: titleById.get(nid) ?? nid, sharedTags: edge ? edge.sharedTags : [] };
+  });
+
+  return {
+    title: titleById.get(id),
+    depth: model.depths.get(id) ?? 0,
+    isSun: model.sunIds.has(id),
+    sunTitle,
+    componentSize: comp.size,
+    neighborCount: neighborIds.length,
+    neighbors,
+  };
+}

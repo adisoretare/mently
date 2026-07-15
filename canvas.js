@@ -1,7 +1,7 @@
 // Renderer Canvas 2D + Pointer Events. Physics în physics.js; UI wiring în ui.js.
 
 import { subscribe, getNotes } from './store.js';
-import { buildGraphModel, connectedComponent, nodesWithTag } from './graph.js';
+import { buildGraphModel, connectedComponent, nodesWithTag, describeNode } from './graph.js';
 import { announce } from './dom.js';
 import { t } from './i18n.js';
 import {
@@ -1224,7 +1224,12 @@ function toggleSelect(id) {
   // ui.js NU mai anunță pentru events de canvas (ar dubla mesajul).
   if (newId !== null) {
     const note = nodesById.get(newId);
-    if (note) announce(t.a11y.sunPromoted(note.title));
+    if (note) {
+      // Contextul de graf face canvas-ul (aria-hidden) inteligibil non-vizual:
+      // al cui soare e nodul, cu cine e conectat și prin ce tag-uri.
+      const graphContext = t.a11y.nodeContext(describeNode(newId, graphModel));
+      announce(`${t.a11y.sunPromoted(note.title)} ${graphContext}`);
+    }
   } else if (wasSelected) {
     announce(t.a11y.sunReset);
   }

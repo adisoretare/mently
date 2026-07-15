@@ -112,6 +112,8 @@ const ro = {
     attachOpenLabel: (name) => `Deschide ${name} în tab nou`,
     attachDownloadLabel: (name) => `Descarcă ${name}`,
     attachMissing: 'Fișierul lipsește din stocarea locală.',
+    readAloudLabel: 'Citește cu voce tare',
+    stopReadingLabel: 'Oprește citirea',
   },
 
   a11y: {
@@ -162,6 +164,21 @@ const ro = {
     searchResults: (n) => n === 1 ? '1 rezultat găsit.' : `${n} rezultate găsite.`,
     attachmentAdded: (name) => `Fișierul "${name}" a fost atașat.`,
     attachmentRemoved: (name) => `Fișierul "${name}" a fost eliminat.`,
+    nodeContext: (d) => {
+      if (!d) return '';
+      if (d.neighborCount === 0) return 'Nod izolat, fără conexiuni.';
+      const who = d.isSun
+        ? `Soarele grupului său de ${d.componentSize} notițe.`
+        : (d.sunTitle ? `Planetă a soarelui "${d.sunTitle}", grup de ${d.componentSize} notițe.` : `Grup de ${d.componentSize} notițe.`);
+      const conns = d.neighbors
+        .map((n) => n.sharedTags.length ? `"${n.title}" (${n.sharedTags.join(', ')})` : `"${n.title}"`)
+        .join(', ');
+      const rest = d.neighborCount > d.neighbors.length ? ` și încă ${d.neighborCount - d.neighbors.length}` : '';
+      return `${who} Conectat cu ${conns}${rest}.`;
+    },
+    graphSummaryLabel: 'Structura grafului',
+    graphSummaryGroup: (i, size, sun) => `Grupul ${i}: ${size} notițe, soare "${sun}"`,
+    graphSummaryIsolated: (n) => `${n} noduri izolate`,
   },
 
   tasks: {
@@ -349,6 +366,8 @@ const en = {
     attachOpenLabel: (name) => `Open ${name} in new tab`,
     attachDownloadLabel: (name) => `Download ${name}`,
     attachMissing: 'File is missing from local storage.',
+    readAloudLabel: 'Read aloud',
+    stopReadingLabel: 'Stop reading',
   },
 
   a11y: {
@@ -399,6 +418,21 @@ const en = {
     searchResults: (n) => n === 1 ? '1 result found.' : `${n} results found.`,
     attachmentAdded: (name) => `File "${name}" attached.`,
     attachmentRemoved: (name) => `File "${name}" removed.`,
+    nodeContext: (d) => {
+      if (!d) return '';
+      if (d.neighborCount === 0) return 'Isolated node, no connections.';
+      const who = d.isSun
+        ? `Sun of its group of ${d.componentSize} notes.`
+        : (d.sunTitle ? `Planet of sun "${d.sunTitle}", group of ${d.componentSize} notes.` : `Group of ${d.componentSize} notes.`);
+      const conns = d.neighbors
+        .map((n) => n.sharedTags.length ? `"${n.title}" (${n.sharedTags.join(', ')})` : `"${n.title}"`)
+        .join(', ');
+      const rest = d.neighborCount > d.neighbors.length ? ` and ${d.neighborCount - d.neighbors.length} more` : '';
+      return `${who} Connected to ${conns}${rest}.`;
+    },
+    graphSummaryLabel: 'Graph structure',
+    graphSummaryGroup: (i, size, sun) => `Group ${i}: ${size} notes, sun "${sun}"`,
+    graphSummaryIsolated: (n) => `${n} isolated nodes`,
   },
 
   tasks: {
